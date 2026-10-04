@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-04
+
+### Added
+
+- The body clock, the sleep mode and the alarm (REQUIREMENTS 3.4/3.5):
+  - **The learned bio-clock.** 24 bins of user-contact phase (`MateState.circadian`) learn WHEN this user lives; the wake-drive W(t) read off them raises the sleep threshold in the user's active hours and lowers it in the learned valley. Sleep duration is emergent — a user who chats 24h a day gives a companion that never sleeps; one who only appears at 1 AM gives a companion that is sharp at 1 AM; one who vanishes gives it its day back. The rest drive is Process S — no second quantity was invented.
+  - **Sleep only happens to a body whose window stayed open.** Closing the terminal is anesthesia: the next boot's catch-up still clears fatigue and consolidates memory, but it counts no lived nights (`sleepTransition(..., {lived: false})`) and the wake note says "you were shut off for X" instead of "you slept". Sleep itself is a LIVE mode: drowsiness (the rest drive against the W(t)-raised threshold) stretches and silences the companion until the gate opens, the model says goodnight in a visible turn, and ~90-minute cycles follow (the first 70–100 min, per Carskadon & Dement).
+  - **Dreams.** Each sleep cycle renders one dream from the day's real residues (recalled memory nodes + the observation ring — nothing invented from nothing), as a small standalone model call that also returns an 8-channel affect reading applied at HALF gain (REM's low-noradrenaline charge-stripping). Mid-night dreams live in the observation ring and fade by morning; only the final dream — the one in reach when waking — is encoded as a private memory. Waking: the wake-drive rising, the user speaking, or its own alarm.
+  - **The `alarm` tool.** The model schedules its own one-shot or daily wake-ups (persisted in `alarms.json`); a firing alarm ends sleep and triggers a turn with the label.
+  - **The hazard thought cadence.** Waking heartbeats keep a 60-second grid; past 3 minutes since the last model call, each beat carries a probability of becoming a short model-authored thought (the kernel's template thoughts are the fallback, and the impulse decision stays kernel-side). The hazard collapses with drowsiness — past ~10 silent minutes the body is probably asleep.
+  - **Cache warmth follows the body clock:** the extension answers pi's `cache_warming_decision` with "stop" while asleep — nothing is kept warm for an empty room — and defers otherwise.
+
 ## [1.1.0] - 2026-10-04
 
 ### Added

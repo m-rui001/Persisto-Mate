@@ -45,7 +45,14 @@ import {
 	linesFor,
 	type Thought,
 } from "@earendil-works/pi-mate";
-import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "../../core/extensions/types.ts";
+import type {
+	CacheWarmingDecisionEventResult,
+	ExtensionAPI,
+	ExtensionContext,
+	ExtensionFactory,
+} from "../../core/extensions/types.ts";
+import { AlarmManager, createAlarmTool } from "./alarm-tool.ts";
+import { authorDream, authorThought } from "./inner-voice.ts";
 import { judgeFailureLine, judgeReadingLine, parseModelRef, runAffectJudge } from "./judge-run.ts";
 import { createLookTool } from "./look-tool.ts";
 import { createPonderTool } from "./ponder-tool.ts";
@@ -97,6 +104,17 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 		pi.registerTool(createPonderTool(() => rt));
 		pi.registerTool(createRememberTool(() => rt));
 		pi.registerTool(createLookTool());
+		// The companion's own clock: alarms survive restarts and wake it on schedule.
+		const alarmManager = new AlarmManager(rt.stateDir, (alarm) => {
+			const L = linesFor(rt.language);
+			rt.wakeFromSleep();
+			injectedFullThisRun = false;
+			pi.sendMessage(
+				{ customType: "mate-alarm", content: L.alarmFired(alarm.label || alarm.id), display: false },
+				{ triggerTurn: true },
+			);
+		});
+		pi.registerTool(createAlarmTool(() => rt, alarmManager));
 
 		// ---------------------------------------------------------------------
 		// Boot: catch up across the powered-off gap + log this open, then beat while idle.
@@ -125,7 +143,22 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 					// A failed dialog must not block boot.
 				}
 			}
-			rt.startHeartbeat((decision, thought) => onImpulse(decision, thought));
+			// Re-arm persisted alarms; the manager fires them through the callback above.
+			alarmManager.scheduleNext();
+			rt.startHeartbeat({
+				onImpulse: (decision, thought) => onImpulse(decision, thought),
+				authorThought: (state, memory) => authorThought(liveCtx!, rt.language, state, memory),
+				authorDream: (state, memory) => authorDream(liveCtx!, rt.language, state, memory),
+				onSleepEnter: () => {
+					// The visible farewell: drowsiness won, the model says goodnight, then it sleeps.
+					const L = linesFor(rt.language);
+					injectedFullThisRun = false;
+					pi.sendMessage(
+						{ customType: "mate-sleep", content: L.sleepFarewell, display: false },
+						{ triggerTurn: true },
+					);
+				},
+			});
 		});
 
 		// ---------------------------------------------------------------------
@@ -216,6 +249,8 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 			// has said 600 tokens since the last reading has lived through something worth reading.
 			const tokens = runTokens(event.messages);
 			rt.noteRunOutput(tokens.reply, tokens.thinking);
+			// The thought-cadence floor is measured from the last model call's end.
+			rt.noteCallEnd();
 		});
 
 		pi.on("agent_settled", (_event, ctx) => {
@@ -292,6 +327,16 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 			} catch {
 				// Noting must never disturb the prompt itself.
 			}
+		});
+
+		// ---------------------------------------------------------------------
+		// Cache warmth follows the body clock: while the companion sleeps there is no conversation
+		// to keep warm, so every probe would be spent lighting an empty room. "stop" holds until the
+		// next real request — waking resets it. Extensions loaded after this one may override.
+		// ---------------------------------------------------------------------
+		pi.on("cache_warming_decision", (_event): CacheWarmingDecisionEventResult => {
+			if (rt.isAsleep()) return { action: "stop" };
+			return {};
 		});
 
 		// ---------------------------------------------------------------------

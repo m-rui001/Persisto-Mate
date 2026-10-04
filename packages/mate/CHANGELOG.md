@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-04
+
+### Added
+
+- The learned bio-clock (`MateState.circadian`): 24 bins of user-contact local hours, updated on every user message with a slow pull toward uniform, read as the wake-drive W(t) (smoothed, amplitude scaled by contact mass, weak local-night prior until the shape is learned) — and `drowsinessOf()`, the sleep gate where the rest drive crosses a threshold W raises. The kernel knows nothing about wall-clock bedtimes: the clock is the user's behaviour, and sleep duration is whatever the two processes produce.
+- `sleepTransition(state, t, {lived})`: the `lived` flag separates a LIVE night (counted in `sleepCycles`, dream-capable) from the anesthesia of a powered-off gap (physiology only). Catch-up rest windows are no longer nights.
+
+### Changed
+
+- The i18n boot note is `shutGap` ("you were shut off for X") — an offline gap is never claimed as sleep.
+
 ## [1.1.0] - 2026-10-04
 
 ### Added

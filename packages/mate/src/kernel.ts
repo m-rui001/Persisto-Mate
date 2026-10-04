@@ -13,6 +13,7 @@ import {
 	AWARENESS_DECAY,
 	BOREDOM,
 	BURST_W,
+	CIRCADIAN,
 	CUSP,
 	DRIVE_FALL,
 	DRIVE_RISE,
@@ -650,6 +651,57 @@ export function addObservation(state: MateState, text: string): string[] {
 }
 
 /**
+ * The learned bio-clock: record a moment of user contact and gently pull every bin toward uniform.
+ *
+ * Contact is the zeitgeber (REQUIREMENTS 3.4): the histogram learns WHEN this user lives, and the
+ * slow uniform pull means old habits fade — a rhythm that stops being honoured stops shaping the
+ * clock. Called from transition() on contact events, so catch-up replays it identically.
+ */
+export function recordContactPhase(state: MateState, t: number): MateState["circadian"] {
+	const bins = [...state.circadian.bins];
+	const hour = new Date(t).getHours();
+	const pulled = bins.map((b) => b * CIRCADIAN.decayPerContact);
+	pulled[hour] += 1;
+	return { bins: pulled };
+}
+
+/**
+ * The wake-drive W(t)∈[0,1]: how "daytime" this local hour is FOR THIS COMPANION. The smoothed
+ * contact histogram scaled by its own mass — a sparsely contacted companion keeps a low-amplitude
+ * drive (sleeps easily almost anywhere), a heavily contacted one a high one. Insufficient data
+ * falls back to a weak local-night prior until the shape is learned.
+ */
+export function wakeDrive(state: MateState, t: number): number {
+	const bins = state.circadian.bins;
+	const total = bins.reduce((a, b) => a + b, 0);
+	const h = new Date(t).getHours();
+	if (total < CIRCADIAN.sufficientMass) {
+		return h >= 23 || h < 7 ? CIRCADIAN.priorNight : CIRCADIAN.priorDay;
+	}
+	const w = (i: number) => bins[(i + 24) % 24];
+	const smoothed = (w(h - 1) + CIRCADIAN.centreWeight * w(h) + w(h + 1)) / (2 + CIRCADIAN.centreWeight);
+	const peak = Math.max(
+		...bins.map((_, i) => (w(i - 1) + CIRCADIAN.centreWeight * w(i) + w(i + 1)) / (2 + CIRCADIAN.centreWeight)),
+	);
+	const amp = Math.min(1, total / CIRCADIAN.sufficientMass);
+	if (peak <= 0) return CIRCADIAN.priorDay;
+	return clamp01(amp * (smoothed / peak));
+}
+
+/**
+ * The sleep gate: the rest drive (Process S) against a threshold the wake-drive raises. In the
+ * user's active hours the ceiling is near restCeiling — sleep practically cannot start there —
+ * while in the learned valley it sinks toward restFloor. Returns the DROWSINESS scalar: ≥1 means
+ * the gate is open (sleep mode may begin), fractional values stretch the heartbeat and mute
+ * impulses (a drowsy body neither reaches out nor talks much).
+ */
+export function drowsinessOf(state: MateState, now: number): number {
+	const w = wakeDrive(state, now);
+	const threshold = CIRCADIAN.restFloor + (CIRCADIAN.restCeiling - CIRCADIAN.restFloor) * w;
+	return clamp01(state.drives.rest / Math.max(threshold, 1e-6));
+}
+
+/**
  * The kernel. Steps 1-10 of Eq. 1.
  *
  * `dt` is the time since `state.t`. It may be milliseconds or weeks: every time-dependent term
@@ -794,6 +846,10 @@ export function transition(state: MateState, event: MateEvent, dtOverride?: numb
 	const drives = updateDrives(state.drives, character, dt, satisfied);
 	const awareness = updateAwareness(state.awareness, { ...state, character }, dt, presence);
 
+	// The learned bio-clock: contact teaches the clock WHEN this user lives. Only real user
+	// messages move it — a proactive message or a judge reading is the companion's own act.
+	const circadian = event.kind === "user_message" ? recordContactPhase(state, event.t) : state.circadian;
+
 	const work = contact ? 0.15 + Math.min(intensityOf(event.activations), 1.5) * 0.1 : 0;
 	const allostasis = updateAllostasis({ ...state, mood, character }, dt, work);
 
@@ -807,6 +863,7 @@ export function transition(state: MateState, event: MateEvent, dtOverride?: numb
 		beliefs,
 		awareness,
 		allostasis,
+		circadian,
 		opponent,
 		rho,
 		seed,
@@ -876,11 +933,13 @@ export function transition(state: MateState, event: MateEvent, dtOverride?: numb
 /**
  * Sleep consolidation's affective half: mood recovers toward baseline, fatigue resets.
  *
- * The paper runs this nightly at 1-5 AM on a box that never powers off. Here it is also called
- * retroactively by the catch-up engine for every sleep window crossed while the machine was off,
- * so a companion that slept through three nights wakes having actually processed them.
+ * `lived` distinguishes the two ways a body rests. A LIVE sleep (the sleep-mode cycles) is
+ * experienced: it counts in sleepCycles and, in the extension host, carries dreams. An offline
+ * gap is anesthesia — the body rested but nobody was there — so catch-up calls this with
+ * `lived: false` and the counter stays honest about which nights were actually lived.
  */
-export function sleepTransition(state: MateState, t: number): MateState {
+export function sleepTransition(state: MateState, t: number, opts: { lived?: boolean } = {}): MateState {
+	const lived = opts.lived ?? true;
 	const baseline = personalityBaseline(state);
 	const emotions = emptyEmotions();
 	// Emotions are dampened, not erased: residue of the day survives into the next morning.
@@ -904,7 +963,7 @@ export function sleepTransition(state: MateState, t: number): MateState {
 		catastrophe: false,
 		t,
 		lastHeartbeat: t,
-		counters: { ...state.counters, sleepCycles: state.counters.sleepCycles + 1 },
+		counters: { ...state.counters, sleepCycles: state.counters.sleepCycles + (lived ? 1 : 0) },
 		rho: fromEmotions(emotions, state.seed),
 	};
 }

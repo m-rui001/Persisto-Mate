@@ -149,6 +149,10 @@ export function catchUp(
 	let transitions = 0;
 
 	// Segment the gap at each sleep window. Each segment is one closed-form jump.
+	//
+	// These windows are ANESTHESIA, not sleep (REQUIREMENTS 3.4): the machine was off, so the body
+	// rests — fatigue clears, mood recovers — but nobody lived it. No dreams, and sleepCycles does
+	// not move; a lived night is one the window stayed open for (the sleep-mode cycles).
 	let cursor = from;
 	for (const s of sleeps) {
 		const segmentEnd = Math.min(s.t, to);
@@ -157,7 +161,7 @@ export function catchUp(
 			current = r.state;
 			transitions++;
 		}
-		current = sleepTransition(current, s.t);
+		current = sleepTransition(current, s.t, { lived: false });
 		transitions++;
 		cursor = s.t;
 	}

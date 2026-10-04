@@ -103,6 +103,7 @@ export function birth(opts: BirthOptions = {}): MateState {
 		allostasis: { fatigue: 0, load: 0, baselineShift: { p: 0, a: 0, d: 0 } },
 		rho,
 		habituation: {},
+		circadian: { bins: Array.from({ length: 24 }, () => 0) },
 		observations: [],
 		counters: {
 			messages: 0,
@@ -147,6 +148,15 @@ function sanitiseCharacter(raw: unknown, fresh: Character): Character {
 	return out;
 }
 
+/** Repair a learned bio-clock from disk: exactly 24 finite, non-negative bins, or a fresh flat one. */
+function sanitiseCircadian(raw: unknown): { bins: number[] } {
+	const fresh = { bins: Array.from({ length: 24 }, () => 0) };
+	const r = raw as { bins?: unknown } | undefined;
+	if (!r || !Array.isArray(r.bins) || r.bins.length !== 24) return fresh;
+	const bins = r.bins.map((b) => (typeof b === "number" && Number.isFinite(b) && b >= 0 ? b : 0));
+	return { bins };
+}
+
 export function sanitiseState(raw: unknown, opts: BirthOptions = {}): MateState {
 	if (!raw || typeof raw !== "object") return birth(opts);
 	const r = raw as Partial<MateState>;
@@ -188,6 +198,7 @@ export function sanitiseState(raw: unknown, opts: BirthOptions = {}): MateState 
 		// on load (see store.ts).
 		rho: Array.isArray(r.rho) ? r.rho : fresh.rho,
 		habituation: r.habituation && typeof r.habituation === "object" ? r.habituation : {},
+		circadian: sanitiseCircadian(r.circadian),
 		observations: Array.isArray(r.observations) ? r.observations.filter((x) => typeof x === "string") : [],
 		counters: {
 			messages: num(r.counters?.messages, 0),

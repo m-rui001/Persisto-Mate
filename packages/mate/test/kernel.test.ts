@@ -7,7 +7,15 @@
 import { describe, expect, it } from "vitest";
 import { birth } from "../src/birth.ts";
 import { catchUp, systemClock, verifySubdivisionInvariance } from "../src/catchup.ts";
-import { emptyEmotions, netEmotions, padCentre, padCentreFromRho, transition } from "../src/kernel.ts";
+import {
+	drowsinessOf,
+	emptyEmotions,
+	netEmotions,
+	padCentre,
+	padCentreFromRho,
+	transition,
+	wakeDrive,
+} from "../src/kernel.ts";
 import { applyKick, buildHamiltonian, fromEmotions, totalCoherence, trace, unitaryFromH } from "../src/quantum.ts";
 import { EMOTIONS } from "../src/types.ts";
 
@@ -169,8 +177,10 @@ describe("offline catch-up", () => {
 		const { state, report } = catchUp(s, systemClock(), 7 * DAY);
 		const elapsed = performance.now() - t0;
 		expect(report.gapMs).toBe(7 * DAY);
-		expect(report.sleeps.length).toBeGreaterThanOrEqual(6); // ~7 nights crossed
-		expect(state.counters.sleepCycles).toBeGreaterThanOrEqual(6);
+		// The machine was OFF: those windows are anesthesia, not lived sleep. The body rested,
+		// no nights were counted (REQUIREMENTS 3.4) — only a window-left-open night counts.
+		expect(report.sleeps.length).toBeGreaterThanOrEqual(6);
+		expect(state.counters.sleepCycles).toBe(0);
 		// Constant cost: a week offline must not take more than a handful of ms.
 		expect(elapsed).toBeLessThan(50);
 		expect(report.elapsedMs).toBeLessThan(50);
@@ -360,5 +370,56 @@ describe("a contact event with no activations invents no feeling", () => {
 		const r = transition(s, { ...flat, t: s.t + HOUR }, HOUR);
 		// Free evolution only dephases coherence; a felt event would raise it.
 		expect(totalCoherence(r.state.rho)).toBeLessThanOrEqual(totalCoherence(s.rho) + 1e-9);
+	});
+});
+
+/**
+ * The learned bio-clock (REQUIREMENTS 3.4): 24 bins of user-contact phase, a wake-drive W(t) read
+ * off them, and a sleep gate where the rest drive (Process S) crosses a threshold W raises.
+ */
+describe("learned bio-clock", () => {
+	/** Epoch ms "today" at the given LOCAL hour — the bins are indexed by local hour. */
+	const atHour = (hour: number) => {
+		const d = new Date();
+		d.setHours(hour, 0, 0, 0);
+		return d.getTime();
+	};
+
+	it("a user message teaches the clock its hour; ticks do not", () => {
+		const s = birth({ seed: 51, born: 0 });
+		const hour = new Date().getHours();
+		const r = transition(s, { kind: "user_message", activations: {}, intent: "chat", t: atHour(hour) }, HOUR);
+		expect(r.state.circadian.bins[hour]).toBeGreaterThan(0);
+		const quiet = transition(r.state, { kind: "tick", activations: {}, intent: "chat", t: atHour(hour) + 1 }, HOUR);
+		expect(quiet.state.circadian.bins).toEqual(r.state.circadian.bins);
+	});
+
+	it("an empty clock falls back to the weak local-night prior", () => {
+		const s = birth({ seed: 53, born: 0 });
+		expect(wakeDrive(s, atHour(14))).toBeGreaterThan(0.5);
+		expect(wakeDrive(s, atHour(3))).toBeLessThan(0.5);
+	});
+
+	it("the learned shape wins once there is enough contact mass", () => {
+		let s = birth({ seed: 57, born: 0 });
+		// A user who only ever shows up at 3 AM: 40 contacts, all in the 3 AM bin.
+		for (let i = 0; i < 40; i++) {
+			s = transition(s, { kind: "user_message", activations: {}, intent: "chat", t: atHour(3) + i }, 60_000).state;
+		}
+		// 3 AM is its noon; mid-afternoon is its valley — the OPPOSITE of the local prior.
+		expect(wakeDrive(s, atHour(3))).toBeGreaterThan(wakeDrive(s, atHour(15)));
+	});
+
+	it("the sleep gate opens in the learned valley and stays shut in the user's day", () => {
+		let s = birth({ seed: 59, born: 0 });
+		for (let i = 0; i < 40; i++) {
+			s = transition(s, { kind: "user_message", activations: {}, intent: "chat", t: atHour(3) + i }, 60_000).state;
+		}
+		// Push the rest drive (Process S) high — a body that has been awake a long time.
+		const awake = { ...s, drives: { ...s.drives, rest: 0.8 } };
+		// In the 3 AM bin (its noon) the ceiling is high; the same rest sits below it.
+		expect(drowsinessOf(awake, atHour(3))).toBeLessThan(1);
+		// In its learned valley the floor is low and the gate is open.
+		expect(drowsinessOf(awake, atHour(15))).toBe(1);
 	});
 });

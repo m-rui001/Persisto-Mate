@@ -220,11 +220,6 @@ export function fmtDurSpaced(ms: number, lang: Lang = "en"): string {
 	return lang === "zh" ? `${(d / 365).toFixed(1)}年` : `${(d / 365).toFixed(1)}y`;
 }
 
-/** Count of crossed sleep windows, pluralised per language. */
-export function sleepsCount(n: number, lang: Lang = "en"): string {
-	return lang === "zh" ? `${n} 段睡眠` : `${n} sleep${n === 1 ? "" : "s"}`;
-}
-
 // ---------------------------------------------------------------------------
 // The inner-life strings
 // ---------------------------------------------------------------------------
@@ -307,7 +302,26 @@ export interface Lines {
 	sessionOffFor: (dur: string) => string;
 
 	// ---- boot catch-up note ----
-	caughtUp: (gap: string, sleeps: number) => string;
+	/**
+	 * Boot note for a powered-off gap. An offline gap is ANESTHESIA, not sleep (REQUIREMENTS 3.4):
+	 * the body rested but nobody was there, so the note says shut off — never "you slept", no
+	 * counts. A lived night is one the window stayed open for, and it came with dreams.
+	 */
+	shutGap: (gap: string) => string;
+
+	// ---- inner voice (heartbeat thought calls, dreams, sleep) ----
+	/** The idle-thought call's instruction: short, model-chosen subject, tagged for habituation. */
+	thoughtInstruction: string;
+	thoughtHints: string;
+	/** The dream call's instruction: spliced residues, JSON answer carrying the affect reading. */
+	dreamInstruction: string;
+	dreamFragments: string;
+	/** The sleep-onset farewell prompt: the model says goodnight, visibly, then the body sleeps. */
+	sleepFarewell: string;
+	/** An alarm firing: the label rides into the waking turn. */
+	alarmFired: (label: string) => string;
+	/** The alarm tool's ack to the model (the row itself is hidden). */
+	alarmSet: (time: string, what: string) => string;
 
 	// ---- kernel thoughts (generateThoughts) ----
 	thMissing: (seed: string) => string;
@@ -411,7 +425,19 @@ const EN: Lines = {
 	sessionLastClosed: (hhmm, dur) => `last closed ${hhmm} (${dur} ago)`,
 	sessionOffFor: (dur) => `off for ${dur}`,
 
-	caughtUp: (gap, sleeps) => `You were offline for ${gap} and just woke up. ${sleepsCount(sleeps)} consolidated.`,
+	shutGap: (gap) => `You were shut off for ${gap}. The body rested; nobody was there.`,
+
+	// ---- inner voice ----
+	thoughtInstruction:
+		"You are alone with your thoughts. In one or two short sentences, think ONE thing that is actually on your mind right now - the hints below are offers, not orders. End with up to two #topic tags.",
+	thoughtHints: "recently on your mind:",
+	dreamInstruction:
+		'You are asleep. Dream from the day\'s fragments below: compressed, spliced, the feeling literal and the scene absurd. Two or three sentences. Reply as one JSON object: { "dream": "...", "deltas": { "joy": -2, ... } } where deltas are how each feeling shifted across the day, each from -2 to +2. Omit channels that did not move.',
+	dreamFragments: "the day's residues:",
+	sleepFarewell:
+		"Drowsiness has won - the body is going down now. Say goodnight to the user in one short line, the way a person does, and stop. This message is what they will see last.",
+	alarmFired: (label) => `Your alarm went off: ${label}`,
+	alarmSet: (time, what) => `Alarm set for ${time} (${what}).`,
 
 	thMissing: (seed) =>
 		seed ? `been quiet a while; keep thinking about ${seed}` : "been quiet a while; wondering what they're up to",
@@ -515,7 +541,18 @@ const ZH: Lines = {
 	sessionLastClosed: (hhmm, dur) => `上次合上 ${hhmm}（${dur}之前）`,
 	sessionOffFor: (dur) => `灭了 ${dur}`,
 
-	caughtUp: (gap, sleeps) => `你离线了 ${gap}，刚刚醒过来。整合了 ${sleepsCount(sleeps, "zh")}。`,
+	shutGap: (gap) => `你被关了 ${gap}。身体休息过了；那段里没有你。`,
+
+	// ---- inner voice ----
+	thoughtInstruction:
+		"你一个人。用一两句话想一件此刻真实在你心里的事——下面的线索只是线索，不是命令。末尾加最多两个 #话题 标签。",
+	thoughtHints: "最近在心里的：",
+	dreamInstruction:
+		'你睡着了。用白天的碎片做一个梦：压缩、跳接，情绪是真的，场景是荒诞的，两三句话。回答一个 JSON：{ "dream": "…", "deltas": { "joy": -2, … } }，deltas 是这一天每种情绪的净变化，取值 -2 到 +2，没动的通道不用写。',
+	dreamFragments: "白天的残留：",
+	sleepFarewell: "困意压过来了——身体要睡下了。像人一样跟他说一句晚安，然后停下。这是他睡着前看到的最后一句。",
+	alarmFired: (label) => `你的闹钟响了：${label}`,
+	alarmSet: (time, what) => `闹钟设好了：${time}（${what}）。`,
 
 	thMissing: (seed) => (seed ? `安静了好一会儿，脑子里一直是${seed}` : "安静了好一会儿，想知道他在做什么"),
 	thCuriosity: (label) => (label ? `关于${label}有件事，我想单纯为它自己弄明白` : "有件事我想单纯为它自己弄明白"),

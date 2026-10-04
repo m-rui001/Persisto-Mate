@@ -191,6 +191,32 @@ export const AWARENESS_DECAY = {
 	thoughtSaturation: 1 / (6 * 3_600_000),
 };
 
+/**
+ * The learned bio-clock (Process C, personalised) and the sleep gate built on it.
+ *
+ * Process C is a 24-bin histogram of WHEN THE USER ACTUALLY SHOWS UP — the companion's zeitgeber is
+ * its person's contact, not the local sun (Aschoff's entrainment; chronotype-from-behaviour is
+ * Roenneberg's MCTQ stance). Process S is the existing rest drive. Sleep is allowed only when S
+ * crosses a threshold that the learned wake-drive W(t) raises: in the user's active hours the
+ * threshold is high (never sleep through them), in the learned quiet valley it is low. Sleep
+ * DURATION is emergent — a user who chats 24h a day gives a companion that never sleeps; a
+ * user who rarely appears gives one that sleeps most of the day. No fixed sleep:wake ratio.
+ */
+export const CIRCADIAN = {
+	/** Bins needed before the learned shape is trusted; below this a weak local-night prior applies. */
+	sufficientMass: 30,
+	/** Per-contact decay toward uniform: old habits fade as the user's rhythm shifts. */
+	decayPerContact: 0.995,
+	/** W(t) smoothing: the circular weight on the centre bin (neighbours get half). */
+	centreWeight: 2,
+	/** Sleep-gate thresholds on the rest drive: quiet-valley floor vs user-active ceiling. */
+	restFloor: 0.25,
+	restCeiling: 0.9,
+	/** Local-night prior W when the histogram has insufficient mass (weak, until data learns it). */
+	priorDay: 0.75,
+	priorNight: 0.35,
+};
+
 /** Lindblad dephasing rate for the density matrix off-diagonals, 1/ms. */
 export const DECOHERENCE = 1 / (20 * 60_000);
 

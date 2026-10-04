@@ -33,6 +33,7 @@ import {
 	catchUp,
 	closeSession,
 	consolidate,
+	drowsinessOf,
 	type EmotionVector,
 	emptyMemory,
 	emptySessions,
@@ -60,6 +61,7 @@ import {
 	save,
 	saveLang,
 	sessionSummary,
+	sleepTransition,
 	stableContext,
 	stateContext,
 	type Thought,
@@ -67,21 +69,51 @@ import {
 	tick,
 	tickEvent,
 	transition,
+	wakeDrive,
 } from "@earendil-works/pi-mate";
 import { getAgentDir } from "../../config.ts";
 import { type AppraisalResult, appraise } from "./appraisal.ts";
 
-/**
- * The live heartbeat interval while the process is alive. Deliberately NOT the kernel's canonical
- * HEARTBEAT_MS (params.ts, 60s): that value is what the catch-up integrator assumes about the world and
- * sizes its no-op floor by, and it stays 60s whatever the host does. Here the beat is a host choice —
- * the state integrates in closed form, so a coarser beat costs nothing in fidelity and keeps an idle
- * CLI quiet.
- */
-const BEAT_MS = 5 * 60_000;
-
 /** Minimum gap that triggers a boot catch-up note. Below this, waking is unremarkable. */
 const CATCHUP_NOTE_MS = 3 * 60_000;
+
+/**
+ * The waking thought cadence is a HAZARD model (REQUIREMENTS 3.4): heartbeats keep a 60-second
+ * grid; once the last model call is at least 3 minutes old, each beat carries a probability of
+ * becoming a model thought call. The hazard collapses with drowsiness, so past ~10 minutes
+ * without a thought the body is probably asleep — which is exactly what the sleep gate then
+ * confirms. Cache warmth is NOT this cadence's job: the warm-cache extension (and pi's native
+ * warmer) probes the provider cache, and this extension vetoes probes while asleep (the
+ * cache_warming_decision handler in index.ts).
+ */
+const BEAT_GRID_MS = 60_000;
+const THOUGHT_FLOOR_MS = 3 * 60_000;
+const THOUGHT_CEIL_MS = 10 * 60_000;
+/** Per-beat fire probability at full alertness; drowsiness scales it down toward silence. */
+const THOUGHT_HAZARD = 0.35;
+/** Sleep cycles (Carskadon & Dement): the first of the night is the shortest, later ones ~90 min. */
+const FIRST_CYCLE_MIN_MS = 70 * 60_000;
+const FIRST_CYCLE_MAX_MS = 100 * 60_000;
+const CYCLE_MS = 90 * 60_000;
+/** Past this drowsiness a body stops reaching out (a sleepy text is a contradiction). */
+const IMPULSE_SUPPRESS = 0.5;
+
+/**
+ * The hooks the heartbeat needs from the host: the model is reached through it, not through here.
+ * The runtime keeps the clock, the gates and the state; the host owns every model call.
+ */
+export interface HeartbeatHooks {
+	onImpulse: (decision: ImpulseDecision, thought: Thought) => void;
+	/** Author an idle thought with the model. Null → the kernel's template thought is the fallback. */
+	authorThought: (state: MateState, memory: MemoryGraph) => Promise<{ text: string; topics: string[] } | null>;
+	/** Author a dream from the day's residues; null → a dreamless cycle (nobody dreams every night). */
+	authorDream: (
+		state: MateState,
+		memory: MemoryGraph,
+	) => Promise<{ text: string; deltas: Partial<EmotionVector> } | null>;
+	/** The visible farewell turn at sleep onset — the model says it, the host runs it. */
+	onSleepEnter: () => void;
+}
 
 export interface RuntimeOptions {
 	/** State directory; defaults to getAgentDir()/mate. */
@@ -113,7 +145,17 @@ export class MateRuntime {
 	private lang: Lang;
 	private onError: (err: unknown) => void;
 	private streaming = false;
-	private heartbeat: ReturnType<typeof setInterval> | null = null;
+	/** The pending waking beat (60s hazard grid). Null = the cadence is not running. */
+	private beatTimer: ReturnType<typeof setTimeout> | null = null;
+	/** The pending sleep-cycle boundary while in sleep mode. */
+	private cycleTimer: ReturnType<typeof setTimeout> | null = null;
+	/** Sleep mode: the window stayed open, drowsiness won, the farewell has been spoken. */
+	private sleepMode = false;
+	/** The night's most recent dream, kept for the wake-time encoding (only it survives the morning). */
+	private lastDreamText: string | null = null;
+	/** When the last model call ended (turn or thought call) — the hazard floor is measured from it. */
+	private lastCallEnd = 0;
+	private hooks: HeartbeatHooks | null = null;
 	private lastCatchUpNote = "";
 	private booted = false;
 	/** The advisory reply lean computed for the pending inbound message (P1), surfaced in the volatile
@@ -163,6 +205,11 @@ export class MateRuntime {
 	/** The live state. Read-only by convention; mutate only via applyEvent. */
 	get state(): MateState {
 		return this.persisted.state;
+	}
+
+	/** The state directory — host bookkeeping (alarms) persists beside the companion's state. */
+	get stateDir(): string {
+		return this.dir;
 	}
 
 	/** The live memory graph. Read-only; mutated only via encode/consolidate here. */
@@ -314,10 +361,8 @@ export class MateRuntime {
 			this.persisted = { ...this.persisted, state, memory, sessions };
 			if (report.gapMs >= CATCHUP_NOTE_MS) {
 				// Localise the wake note; the gap MILLISECONDS are identical, only the wording moves.
-				this.lastCatchUpNote = linesFor(this.lang).caughtUp(
-					gapLabel(report.gapMs, this.lang),
-					report.sleeps.length,
-				);
+				// The gap was ANESTHESIA, not sleep — the wording never claims a night was lived.
+				this.lastCatchUpNote = linesFor(this.lang).shutGap(gapLabel(report.gapMs, this.lang));
 			}
 			this.persistSafe();
 			return { caughtUp: report.transitions > 0, gapMs: now - before, note: this.lastCatchUpNote };
@@ -327,27 +372,179 @@ export class MateRuntime {
 		}
 	}
 
-	/** Start the idle heartbeat. Safe to call once. */
-	startHeartbeat(onImpulse: (decision: ImpulseDecision, thought: Thought) => void): void {
-		if (this.heartbeat) return;
-		this.heartbeat = setInterval(() => {
-			try {
-				this.heartbeatTick(onImpulse);
-			} catch (err) {
-				this.onError(err);
-			}
-		}, BEAT_MS);
-		// Do not keep the process alive just to beat.
-		if (typeof this.heartbeat === "object" && this.heartbeat && "unref" in this.heartbeat) {
-			(this.heartbeat as { unref: () => void }).unref();
-		}
+	/** Start the waking thought cadence. Safe to call once. */
+	startHeartbeat(hooks: HeartbeatHooks): void {
+		if (this.hooks) return;
+		this.hooks = hooks;
+		this.scheduleNextBeat();
 	}
 
 	stopHeartbeat(): void {
-		if (this.heartbeat) {
-			clearInterval(this.heartbeat);
-			this.heartbeat = null;
+		this.hooks = null;
+		if (this.beatTimer) {
+			clearTimeout(this.beatTimer);
+			this.beatTimer = null;
 		}
+		if (this.cycleTimer) {
+			clearTimeout(this.cycleTimer);
+			this.cycleTimer = null;
+		}
+	}
+
+	/** A model call just ended (a turn settled or a thought call finished): the hazard floor is
+	 *  measured from HERE, so a long focused turn postpones the next thought honestly. */
+	noteCallEnd(): void {
+		this.lastCallEnd = Date.now();
+	}
+
+	/** Whether the body is currently in sleep mode (the cache-warmer veto reads this). */
+	isAsleep(): boolean {
+		return this.sleepMode;
+	}
+
+	/** A user message or a fired alarm ends sleep immediately; the last dream was in REM reach. */
+	wakeFromSleep(): void {
+		if (!this.sleepMode) return;
+		this.sleepMode = false;
+		if (this.cycleTimer) {
+			clearTimeout(this.cycleTimer);
+			this.cycleTimer = null;
+		}
+		try {
+			// The night's physiology lands — a LIVED sleep, counted in sleepCycles.
+			this.persisted = { ...this.persisted, state: sleepTransition(this.state, Date.now()) };
+			if (this.lastDreamText) {
+				// The final dream is the one remembered on waking (Zhao 2018) — a private memory.
+				this.ponder(this.lastDreamText, ["dream"]);
+				this.lastDreamText = null;
+			}
+		} catch (err) {
+			this.onError(err);
+		}
+		this.scheduleNextBeat();
+	}
+
+	private scheduleNextBeat(): void {
+		if (this.beatTimer) clearTimeout(this.beatTimer);
+		this.beatTimer = setTimeout(() => {
+			void this.beat();
+		}, BEAT_GRID_MS);
+		this.unrefTimer(this.beatTimer);
+	}
+
+	private unrefTimer(timer: ReturnType<typeof setTimeout>): void {
+		if (typeof timer === "object" && timer && "unref" in timer) {
+			(timer as { unref: () => void }).unref();
+		}
+	}
+
+	/** One waking beat: integrate the gap, decide, maybe let the model think, check the sleep gate. */
+	private async beat(): Promise<void> {
+		if (!this.hooks || this.sleepMode) return;
+		const now = Date.now();
+		// Integrate the elapsed real time (closed-form, subdivision-invariant).
+		this.applyEvent(tickEvent(now));
+		const drowsy = drowsinessOf(this.state, now);
+		const ticked = this.computeImpulse(now, false);
+		let decision = ticked.decision;
+		// The beat's kernel candidate carried a habituation trace — persist it.
+		if (ticked.state !== this.state) {
+			this.persisted = { ...this.persisted, state: ticked.state };
+			this.persistSafe();
+		}
+
+		// A drowsy body does not reach out: the impulse stays inner life.
+		if (decision.action === "reach_out" && drowsy >= IMPULSE_SUPPRESS) {
+			decision = { action: "think_only", thought: decision.thought, reason: "drowsy", advisory: decision.advisory };
+		}
+
+		// The hazard roll: past the floor, each beat may wake the model for one short thought. The
+		// probability collapses with drowsiness — past ~10 silent minutes the body is drifting off.
+		const idle = now - this.lastCallEnd;
+		// Past the ceiling there are no thoughts at all: a body this silent has drifted off.
+		const canFire = !this.streaming && idle >= THOUGHT_FLOOR_MS && idle <= THOUGHT_CEIL_MS + BEAT_GRID_MS;
+		const fired = canFire && Math.random() < Math.max(0.02, THOUGHT_HAZARD * (1 - drowsy));
+
+		if (decision.action === "reach_out") {
+			this.recordBeatThought(decision.thought.text);
+			this.hooks.onImpulse(decision, decision.thought);
+		} else if (fired) {
+			let authored: { text: string; topics: string[] } | null = null;
+			try {
+				authored = await this.hooks.authorThought(this.state, this.persisted.memory);
+			} catch (err) {
+				this.onError(err);
+			}
+			const text = authored?.text || (decision.action === "think_only" ? decision.thought.text : "");
+			if (text) this.recordBeatThought(text);
+		}
+
+		// The sleep gate: past the threshold the body goes down, with a spoken farewell.
+		if (drowsinessOf(this.state, Date.now()) >= 1) {
+			this.enterSleep();
+			return;
+		}
+		this.scheduleNextBeat();
+	}
+
+	// ---------------------------------------------------------------------------
+	// Sleep mode (REQUIREMENTS 3.4): only a body whose window stayed open sleeps.
+	// ---------------------------------------------------------------------------
+
+	private enterSleep(): void {
+		this.sleepMode = true;
+		if (this.beatTimer) {
+			clearTimeout(this.beatTimer);
+			this.beatTimer = null;
+		}
+		this.lastDreamText = null;
+		this.hooks?.onSleepEnter();
+		// The first cycle of a night is the shortest (Carskadon & Dement: 70-100 min).
+		this.scheduleCycle(FIRST_CYCLE_MIN_MS + Math.random() * (FIRST_CYCLE_MAX_MS - FIRST_CYCLE_MIN_MS));
+	}
+
+	private scheduleCycle(ms: number): void {
+		if (this.cycleTimer) clearTimeout(this.cycleTimer);
+		this.cycleTimer = setTimeout(() => {
+			void this.cycle();
+		}, ms);
+		this.unrefTimer(this.cycleTimer);
+	}
+
+	private async cycle(): Promise<void> {
+		if (!this.sleepMode) return;
+		const now = Date.now();
+		this.applyEvent(tickEvent(now));
+		if (this.hooks) {
+			try {
+				const dream = await this.hooks.authorDream(this.state, this.persisted.memory);
+				if (dream?.text) {
+					this.lastDreamText = dream.text;
+					this.applyEvent({
+						kind: "self_observation",
+						activations: {},
+						intent: "chat",
+						text: dream.text,
+						t: Date.now(),
+					});
+					// REM reprocesses the day's feelings at low noradrenaline: the reading lands at
+					// half gain — charge stripped, not restated (Walker & van der Helm 2009).
+					const half: Partial<EmotionVector> = {};
+					for (const [k, v] of Object.entries(dream.deltas)) {
+						half[k as keyof EmotionVector] = (v ?? 0) * 0.5;
+					}
+					this.judgeRead(half as Partial<EmotionVector>);
+				}
+			} catch (err) {
+				this.onError(err);
+			}
+		}
+		// Morning is the learned wake-drive rising: the user's day begins.
+		if (wakeDrive(this.state, Date.now()) >= 0.5) {
+			this.wakeFromSleep();
+			return;
+		}
+		this.scheduleCycle(CYCLE_MS);
 	}
 
 	/**
@@ -398,6 +595,9 @@ export class MateRuntime {
 	} {
 		const now = Date.now();
 		const appraisal = appraise(text);
+		// A message from the user ends sleep on the spot: the body was woken (REQUIREMENTS 3.4),
+		// the night's physiology lands, and the dream that was in REM reach is the one remembered.
+		this.wakeFromSleep();
 		try {
 			this.turnsSinceJudge++;
 			this.applyEvent({
@@ -630,41 +830,20 @@ export class MateRuntime {
 		this.persistSafe();
 	}
 
-	/** Advance one idle beat and decide whether to reach out. */
-	private heartbeatTick(onImpulse: (decision: ImpulseDecision, thought: Thought) => void): void {
-		if (this.streaming) return; // never talk over a running turn
-		const now = Date.now();
-		// Integrate the elapsed real time (closed-form, subdivision-invariant).
-		this.applyEvent(tickEvent(now));
-		const { decision, state } = this.computeImpulse(now, false);
-		// The beat thought something: its habituation trace is part of the state, so a topic this
-		// companion keeps circling loses urgency instead of arriving fresh every single time.
-		if (state !== this.state) {
-			this.persisted = { ...this.persisted, state };
-			this.persistSafe();
-		}
-		if (decision.action === "reach_out") {
-			this.recordBeatThought(decision.thought);
-			onImpulse(decision, decision.thought);
-			return;
-		}
-		if (decision.action === "think_only") this.recordBeatThought(decision.thought);
-	}
-
 	/**
 	 * The beat's thought goes into the observations ring — that ring is the inner monologue the NEXT
 	 * beat reads ("last thought" in the state block), so a thought survives the beat that had it
-	 * instead of evaporating. The text is kernel-authored from the companion's own memories, never
-	 * user content, so it stays inside the private state block.
+	 * instead of evaporating. The text is authored by the model (or the kernel fallback) from the
+	 * companion's own memories, never user content, so it stays inside the private state block.
 	 */
-	private recordBeatThought(thought: Thought): void {
+	private recordBeatThought(text: string): void {
 		const last = this.state.observations[this.state.observations.length - 1];
-		if (thought.text && thought.text !== last) {
+		if (text && text !== last) {
 			this.applyEvent({
 				kind: "self_observation",
 				activations: {},
 				intent: "chat",
-				text: thought.text,
+				text,
 				t: Date.now(),
 			});
 		}

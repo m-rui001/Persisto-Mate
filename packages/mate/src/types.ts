@@ -170,6 +170,12 @@ export interface MateState {
 	rho: DensityMatrixState;
 	/** Dual-process habituation: per-topic System-1 novelty trace. */
 	habituation: Record<string, { s: number; t: number }>;
+	/**
+	 * Learned bio-clock (Process C): 24 bins indexed by LOCAL hour, each counting user contact
+	 * (EMA-smoothed toward uniform). This is the companion's own phase — a user who only ever
+	 * shows up at 1 AM gives it a 1 AM noon. Never a copy of the local clock.
+	 */
+	circadian: { bins: number[] };
 	/** Accumulated self-observations (bounded). */
 	observations: string[];
 	/** Monotonic counters, for telemetry. A counter earns its place by being read: the ones that were

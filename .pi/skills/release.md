@@ -7,7 +7,17 @@ description: Prepare, publish, verify, and recover pi releases. Use for release 
 
 Run repository commands from the repo root (two directories above this skill), unless instructed otherwise.
 
-**Lockstep versioning**: all packages share one version; every release updates all together. `patch` = fixes + additions, `minor` = breaking changes. No major releases.
+## Fork deviations (Persisto Mate — these override the upstream flow below)
+
+- **No CI publish**: this fork has no `.github/workflows/build-binaries.yml`. The upstream steps 4–5 (npm trusted publishing, R2 announcement) do not apply, and the upstream `npm run release:patch/minor` script is NOT used — it tags without the `-mate` suffix. The fork's convention: land the feature commit(s), then a `chore: bump packages to X.Y.Z for the vX.Y.Z-mate release` commit (lockstep `npm run version:minor|patch`, regen `npm-shrinkwrap.json` + `install-lock`, `PI_ALLOW_LOCKFILE_CHANGE=1 npm run check`), then tag `vX.Y.Z-mate` on that commit and push `main` + the tag.
+- **Binaries are built locally**: `./scripts/build-binaries.sh --offline-model-data` (needs bun). Smoke test by extracting the WHOLE archive and running `--version` (must print the release version) plus one real prompt from outside the repo.
+- **Release is published with `gh`**: `gh release create vX.Y.Z-mate --title "Persisto Mate vX.Y.Z" --notes-file <file> <archives>` (gh is at `C:\Program Files\GitHub CLI\gh.exe`).
+- **Keep only one old release**: after publishing, delete all releases except the new one and the single most recent old one (assets go with the release; git tags stay). Current policy set 2026-10-04.
+- **Version sections in CHANGELOGs**: cut a dated `## [X.Y.Z]` section for each release and leave a fresh `## [Unreleased]`. (1.0.4/1.0.5 never cut sections; the 1.1.0 section is the combined diff from 1.0.3.)
+
+---
+
+**Lockstep versioning** (applies to both flows): all packages share one version; every release updates all together. `patch` = fixes + additions, `minor` = breaking changes. No major releases.
 
 1. **Update CHANGELOGs**: ask the user whether they ran the `/cl` prompt on the latest commit on `main`. If not, they must run `/cl` first to audit and update each package's `[Unreleased]` section before releasing.
 
