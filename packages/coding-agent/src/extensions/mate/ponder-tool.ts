@@ -71,7 +71,7 @@ export function createPonderTool(getRuntime: () => MateRuntime): ToolDefinition<
 			// renders nothing for this tool (below), so the word is never shown to the user.
 			const L = linesFor(rt.language);
 			return {
-				content: [{ type: "text", text: L.feelAck }],
+				content: [{ type: "text", text: L.toolAck }],
 				details: { recorded: true },
 			};
 		},

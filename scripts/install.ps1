@@ -1,12 +1,12 @@
-# Install or update MATE (mate.exe) and add it to your user PATH. No admin needed.
+# Install or update Persisto Mate (mate.exe) and add it to your user PATH. No admin needed.
 # Usage (PowerShell):
-#   iwr https://raw.githubusercontent.com/m-rui001/MATE/main/scripts/install.ps1 -useb | iex
+#   iwr https://raw.githubusercontent.com/m-rui001/Persisto-Mate/main/scripts/install.ps1 -useb | iex
 # Re-running it updates in place. Running mate processes are closed first: Windows
 # refuses to delete a native module (native/win32/.../win32-platform.node) that a live
 # process has loaded, which previously made an update fail with a cryptic access error.
 $ErrorActionPreference = "Stop"
 
-$Repo = "m-rui001/MATE"
+$Repo = "m-rui001/Persisto-Mate"
 
 $Arch = $env:PROCESSOR_ARCHITECTURE
 if ($Arch -eq "ARM64") { $platform = "windows-arm64" } else { $platform = "windows-x64" }

@@ -116,6 +116,52 @@ describe("kernel invariants", () => {
 	});
 });
 
+/**
+ * The opponent process follows Solomon & Corbit (1974): the B-process attenuates its own channel and,
+ * outliving the A-process, its subtraction re-emerges on the wheel antipode — the hedonic aftereffect.
+ */
+describe("opponent-process aftereffect", () => {
+	it("a net pushed below zero re-enters as the antipode, never as a negative", () => {
+		const emo = emptyEmotions();
+		emo.joy = 0.2;
+		const opp = emptyEmotions();
+		opp.joy = 0.5; // gain 0.6 -> raw joy = 0.2 - 0.3 = -0.1
+		const out = netEmotions(emo, opp);
+		expect(out.joy).toBe(0);
+		// The deficit lands on sadness, joy's wheel antipode, not in a discarded clamp.
+		expect(out.sadness).toBeCloseTo(0.1, 10);
+		// Antipode-opposite channels are untouched by joy's opponent.
+		expect(out.anger).toBe(0);
+	});
+
+	it("an A-process below its B-process leaves an afterglow, not a hole", () => {
+		const emo = emptyEmotions();
+		emo.joy = 0.1;
+		const opp = emptyEmotions();
+		opp.joy = 0.4; // raw = 0.1 - 0.24 = -0.14 -> the come-down
+		const out = netEmotions(emo, opp);
+		expect(out.sadness).toBeCloseTo(0.14, 10);
+	});
+
+	it("rumination keeps sadness alive longer than the same event without it", () => {
+		const mk = (rumination: number) => {
+			const s = birth({ seed: 41, born: 0 });
+			const seeded = transition(
+				{ ...s, character: { ...s.character, rumination } },
+				{ kind: "user_message", activations: { sadness: 0.8 }, intent: "chat", t: s.t + HOUR },
+				HOUR,
+			).state;
+			// Then a quiet stretch: no new events, only decay. Rumination is the replay that keeps
+			// the episode alive (Verduyn & Lavrijsen), so the residue must differ.
+			return transition(seeded, { kind: "tick", activations: {}, intent: "chat", t: seeded.t + 3 * HOUR }, 3 * HOUR)
+				.state;
+		};
+		const plain = mk(0);
+		const ruminating = mk(1);
+		expect(ruminating.emotions.sadness).toBeGreaterThan(plain.emotions.sadness * 1.05);
+	});
+});
+
 describe("offline catch-up", () => {
 	it("advances state across a multi-day gap at constant cost", () => {
 		const s = birth({ seed: 11, born: 0 });
@@ -293,9 +339,9 @@ describe("quantum order effects", () => {
 
 /**
  * The intake contract. Contact events reach the kernel with an empty activation vector: whether a
- * message FELT like something is the model's own report (`feel` -> runtime.refine, which replays this
- * transition), never a keyword table's guess. That split only holds if transition() adds no affect of
- * its own — otherwise every neutral "ok" would manufacture mood, belief evidence and a kick.
+ * message FELT like something is decided afterwards by the affect judge (an `appraisal` event from the
+ * extension host), never a keyword table's guess. That split only holds if transition() adds no affect
+ * of its own — otherwise every neutral "ok" would manufacture mood, belief evidence and a kick.
  */
 describe("a contact event with no activations invents no feeling", () => {
 	const flat = { kind: "user_message" as const, activations: {}, intent: "chat" as const };

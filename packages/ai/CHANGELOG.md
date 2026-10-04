@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+## [1.1.0] - 2026-10-04
+
+### Added
+
+- `typesafeSystemOneApi` is exported from the `@earendil-works/pi-ai/compat` entrypoint, which is what file-based extensions resolve `@earendil-works/pi-ai` to. It was already reachable through `@earendil-works/pi-ai/api/typesafe-system-one.lazy` from inside the monorepo, but an installed extension cannot import that subpath, so an extension that registers a System One classifier (Aliyun's decision model, TypeSafe's JEV) had to reimplement the protocol.
+
 ## [1.0.0] - 2026-10-01
 
 ### Added

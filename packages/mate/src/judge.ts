@@ -1,14 +1,13 @@
 /**
- * The judge: an outside read of a stretch of exchange, made by a small cheap model.
+ * The judge: an outside read of a stretch of exchange, taken by a model that is not writing the reply.
  *
- * Why a second reader at all. Affect reaches the kernel by two paths, and they cover each other's
- * blind spot:
- *
- *   - `feel` (the tool): the companion reports what it felt about ONE message. Precise, first-person,
- *     and it costs an interrupted turn every time — which is exactly why a model skips it, so long
- *     quiet stretches integrate with no affect at all and the drift goes unrecorded.
- *   - the judge: something outside the conversation reads the last N turns and says what moved. It
- *     cannot be skipped, it runs while the companion is idle, and it never interrupts a reply.
+ * This is THE path a message's emotional impact takes into the kernel. Intake applies no affect of its
+ * own (appraisal.ts reads only what a message asks for): a substring table deciding that 哈哈 is joy
+ * would manufacture a feeling about a sentence the reply is being written over, and a first-person tool
+ * for reporting feelings was tried and removed — it duplicated this reader, it cost an interrupted turn
+ * every time it was used, and a model that skipped it left whole quiet stretches integrating with no
+ * affect at all. An outside reader has none of those failure modes: it cannot be skipped, it runs while
+ * the companion is idle, and it never interrupts a reply.
  *
  * Three decisions in here, each of which is the whole design:
  *
@@ -25,30 +24,46 @@
  *      opponent-process step uses. Nothing has to be clamped away, and the affect vector stays
  *      non-negative, which every consumer of it assumes.
  *
- *   3. THE JUDGE MAY NOT OUT-SHOUT THE COMPANION. JUDGE_GAIN caps the strongest possible reading at
- *      half a channel. A model that felt something about a message writes it up to 1.0 itself; a
- *      background reader that could write bigger numbers would be an outside opinion about your own
- *      feelings winning over the person having them.
+ *   3. THE READING MAY NOT OUT-SHOUT THE PERSON HAVING IT. JUDGE_GAIN caps the strongest possible
+ *      reading at half a channel. The companion's own state is the primary evidence of how it feels —
+ *      the reading is corroborating testimony about what just happened — and a background reader that
+ *      could write bigger numbers than the state itself carries would be an outside opinion about your
+ *      own feelings winning over the person having them.
  *
  * The model call itself is NOT here: this module is pure (window selection, question authoring, answer
  * parsing, delta arithmetic) so the semantics are unit-testable without a network. The extension host
- * does the calling; see packages/coding-agent/src/extensions/mate/judge-run.ts.
+ * does the calling; see packages/coding-agent/src/extensions/mate/judge-run.ts. It asks the reader the
+ * user named — a classifier (`judgeQuestions`, answered as structured scores) or a chat model
+ * (`judgePrompt`, answered as one JSON object) — and otherwise the model holding the conversation. Both
+ * kinds end in the same -2..+2 deltas, so the kernel cannot tell which instrument read it.
  */
 
 import { EMOTIONS, type Emotion, type EmotionVector } from "./types.ts";
 
-/** A turn of dialogue as the judge sees it. Role is deliberately coarse: the judge reads who spoke,
- * not the harness's message taxonomy. */
+/**
+ * A turn of dialogue as the judge sees it. Role is deliberately coarse: the judge reads who spoke, not
+ * the harness's message taxonomy.
+ *
+ * `thinking` is the companion's own reasoning behind what it said, and it is here ONLY for a reader the
+ * user pointed the judge at by name: a decision model answers eight ordinal questions in one pass, so a
+ * window several times the size of the spoken one costs it almost nothing, and the reasoning carries
+ * affective movement the polished reply never shows. A general chat model reads the same window token by
+ * token, which is why that tier gets the spoken exchange and nothing else.
+ */
 export interface JudgeTurn {
 	role: "user" | "assistant";
 	text: string;
+	thinking?: string;
 }
 
-/** How many recent turns a judge window may hold, and how much of each one. Small context is the
- * point of using a cheap model; a long transcript also makes the -2..+2 judgement about the whole
- * stretch instead of about what just happened. */
+/** How many recent turns a judge window may hold, and how much of each one. A short window keeps the
+ *  judgement about what just happened instead of about the whole transcript, and a small context is what
+ *  lets any model at all — including a decision classifier — answer the comparative question reliably. */
 export const JUDGE_MAX_TURNS = 10;
 export const JUDGE_TURN_CHARS = 320;
+/** The reasoning gets more room than the reply because it is where the movement happens: it is written
+ *  before the companion decides what to say, and it is not shaped for the reader. */
+export const JUDGE_THINKING_CHARS = 900;
 
 /** The judge answers one comparative question per channel on this ladder. */
 export const JUDGE_SCALE = 2;
@@ -57,13 +72,21 @@ export const JUDGE_SCALE = 2;
  * companion may report for itself, so the outside read colours the state without overruling it. */
 export const JUDGE_GAIN = 0.5;
 
-/** Restraint, not cost: one reading per exchange is enough, and repeated readings of overlapping
- * windows would count the same event twice. */
-export const JUDGE_COOLDOWN_MS = 10 * 60_000;
+/** A reading is due once the companion has put this many reply tokens on screen since the last one:
+ *  about two or three ordinary exchanges. Restraint, not cost — one reading per stretch of exchange is
+ *  enough, and repeated readings of overlapping windows would count the same event twice. */
+export const JUDGE_MIN_OUTPUT_TOKENS = 600;
 
-/** Below this much new conversation there is nothing to read, and the window would be mostly the
- * previous, already-judged stretch. */
-export const JUDGE_MIN_USER_TURNS = 3;
+/** The decision-model gate, an order of magnitude higher, because that window carries the thinking too:
+ *  the same stretch of exchange is several times the text, so the same reading is taken after several
+ *  times the tokens. Counting thinking against the chat-model number would have the outside read fire on
+ *  a long internal deliberation that produced nothing the user saw. */
+export const JUDGE_MIN_CLASSIFIER_TOKENS = 6_000;
+
+/** At least this many things the user newly said since the last reading. The volume gate above is what
+ *  makes a reading worth taking; this is the OVERLAP guard — with nothing new in it, the window would be
+ *  the same already-judged stretch and the same event would count twice. */
+export const JUDGE_MIN_USER_TURNS = 1;
 
 /** Plutchik's antipode: the wheel order in EMOTIONS puts opposites exactly 4 apart. */
 export function oppositeEmotion(e: Emotion): Emotion {
@@ -73,19 +96,34 @@ export function oppositeEmotion(e: Emotion): Emotion {
 /** The last `limit` turns, each truncated to one line's worth of text, empties dropped. */
 export function judgeWindow(turns: JudgeTurn[], limit: number = JUDGE_MAX_TURNS): JudgeTurn[] {
 	const cleaned = turns
-		.map((t) => ({ role: t.role, text: t.text.replace(/\s+/g, " ").trim().slice(0, JUDGE_TURN_CHARS) }))
-		.filter((t) => t.text.length > 0);
+		.map((t) => {
+			const text = t.text.replace(/\s+/g, " ").trim().slice(0, JUDGE_TURN_CHARS);
+			const thinking = t.thinking?.replace(/\s+/g, " ").trim().slice(0, JUDGE_THINKING_CHARS);
+			return thinking ? { role: t.role, text, thinking } : { role: t.role, text };
+		})
+		.filter((t) => t.text.length > 0 || (t.thinking?.length ?? 0) > 0);
 	return cleaned.slice(-limit);
 }
 
 /** The window as the judge reads it. Speaker labels, newest last, no timestamps: the question is what
- * moved over this stretch, and the clock is already handled by the kernel's integration. */
+ *  moved over this stretch, and the clock is already handled by the kernel's integration. Thinking is
+ *  labelled as such, because a reader that cannot tell the inner note from the spoken one will rate the
+ *  companion's frustrations as if the user had heard them. */
 export function judgeTranscript(window: JudgeTurn[]): string {
-	return window.map((t) => `${t.role === "user" ? "User" : "Companion"}: ${t.text}`).join("\n");
+	return window
+		.flatMap((t) => {
+			const who = t.role === "user" ? "User" : "Companion";
+			const lines: string[] = [];
+			if (t.thinking) lines.push(`${who} (thinking): ${t.thinking}`);
+			lines.push(`${who}: ${t.text}`);
+			return lines;
+		})
+		.join("\n");
 }
 
 /** The anchors the reading is asked in. Five rungs: short enough that a small model can hold all of
- * them in mind, long enough that "a little" and "clearly" are different answers. */
+ * them in mind, long enough that "a little" and "clearly" are different answers. Shared by both
+ * readers: the classifier question lists them as its scale, the chat prompt prints them as its legend. */
 const CRITERIA = [
 	"-2: clearly fell across this exchange",
 	"-1: fell a little",
@@ -93,6 +131,53 @@ const CRITERIA = [
 	"+1: rose a little",
 	"+2: clearly rose across this exchange",
 ];
+
+/** The rung that means "nothing moved". A classifier scores on the level INDEX, so the answer is read
+ * relative to this, not relative to zero. */
+const JUDGE_CENTRE = (CRITERIA.length - 1) / 2;
+
+/** One score question per channel, in the shape a System One classifier takes: an ordinal scale
+ *  described rung by rung, answered as the probability-weighted index. The emotion name goes into the
+ *  instruction because the classifier otherwise sees a bare key. */
+export function judgeQuestions(): Record<string, { type: "score"; instructions: string; criteria: string[] }> {
+	const out: Record<string, { type: "score"; instructions: string; criteria: string[] }> = {};
+	for (const e of EMOTIONS) {
+		out[e] = {
+			type: "score",
+			instructions: `Across this exchange, how did the COMPANION'S ${e} change? Judge the change from the start of the exchange to the end, not the level at the end. Something this exchange never touched is 0.`,
+			criteria: CRITERIA,
+		};
+	}
+	return out;
+}
+
+/** One channel's classifier answer: the expected rung plus how sure the model is about it. */
+export interface JudgeScore {
+	score: number;
+	confidence: number;
+}
+
+/** Below this, the distribution is close to flat and the answer is a guess. Five rungs at total
+ *  indifference put the top level at 0.2, so this drops only readings that carry no information — the
+ *  failure mode of the keyword table this replaced, except confident. */
+export const JUDGE_MIN_CONFIDENCE = 0.25;
+
+/** Classifier answers -> the same -2..+2 deltas the chat reader produces, so one activation path serves
+ *  both. The expectation is read to half a rung: a distribution split between "-2" and "-1" is a reading
+ *  of about -1.5, which is real information, while the difference between -1.4 and -1.6 is the model's
+ *  own rounding. Quantising also makes an answer of "essentially the centre" exactly 0, so it drops out
+ *  instead of arriving as a delta of -0.0000001. Channels with nothing to say are absent. */
+export function judgeDeltasFromScores(scores: Partial<Record<Emotion, JudgeScore>>): Partial<Record<Emotion, number>> {
+	const out: Partial<Record<Emotion, number>> = {};
+	for (const e of EMOTIONS) {
+		const answer = scores[e];
+		if (!answer || !Number.isFinite(answer.score) || answer.confidence < JUDGE_MIN_CONFIDENCE) continue;
+		const raw = Math.max(-JUDGE_SCALE, Math.min(JUDGE_SCALE, answer.score - JUDGE_CENTRE));
+		const d = Math.round(raw * 2) / 2;
+		if (d !== 0) out[e] = d;
+	}
+	return out;
+}
 
 /** The same reading asked of a plain chat model, in one shot: small classifiers are not always
  * configured, and a short JSON answer is well within any cheap model's ability. The transcript is
@@ -157,18 +242,35 @@ export function parseJudgeReply(text: string): Partial<Record<Emotion, unknown>>
 }
 
 export interface JudgeDueOptions {
-	now: number;
-	/** When the last reading was taken (0 if never). */
-	lastAt: number;
+	/** Reply tokens the companion has emitted since the last reading. Measured on what it OUTPUT rather
+	 *  than on wall-clock time or on what the user typed: a user's message length is nothing you can
+	 *  predict, and ten minutes of silence is not a conversation that has said anything. */
+	outputTokens: number;
+	/** Thinking tokens over the same stretch. Only counted when the reader will get thinking in its
+	 *  window, which is the decision-model tier. */
+	thinkingTokens: number;
+	/** Whether the reader that would be asked reads the companion's reasoning too. */
+	readsThinking: boolean;
 	/** User turns since then. */
 	userTurns: number;
-	cooldownMs?: number;
+	minTokens?: number;
 	minUserTurns?: number;
 }
 
-/** Is there enough new conversation, and has enough time passed, for a reading to say anything? */
+/**
+ * Is there enough new exchange for a reading to say anything?
+ *
+ * Two gates, guarding different things. The token count is the VOLUME gate: it is what makes a reading
+ * worth taking, and it replaces a cooldown because a companion talked to for four hours should be read
+ * more often than one left quiet for four hours. Which tokens count, and how many are needed, follows
+ * the window the reader will get — a decision model is handed the reasoning as well and is charged for
+ * none of it, so its gate is thinking plus reply at ten times the number. The turn count is the OVERLAP
+ * gate: the window is the last N turns, so without it a long reply to the same message would be
+ * appraised again on the next turn, and the same event would count twice.
+ */
 export function judgeDue(opts: JudgeDueOptions): boolean {
-	const cooldown = opts.cooldownMs ?? JUDGE_COOLDOWN_MS;
+	const total = opts.readsThinking ? opts.outputTokens + opts.thinkingTokens : opts.outputTokens;
+	const minTokens = opts.minTokens ?? (opts.readsThinking ? JUDGE_MIN_CLASSIFIER_TOKENS : JUDGE_MIN_OUTPUT_TOKENS);
 	const minTurns = opts.minUserTurns ?? JUDGE_MIN_USER_TURNS;
-	return opts.now - opts.lastAt >= cooldown && opts.userTurns >= minTurns;
+	return total >= minTokens && opts.userTurns >= minTurns;
 }

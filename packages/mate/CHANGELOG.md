@@ -2,11 +2,17 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-04
+
 ### Added
 
 - `seedNode(graph, now, seq)`: the idle-thought seed, rotating through the top few memories instead of always taking the strongest.
 - `kernel.DRIFTING_TRAITS`: the traits `nudgeCharacter` actually moves, which the character projection reads so it only shows what experience shaped.
-- `judge.ts`: the pure half of the affect judge - window selection, the "-2 fell clearly .. +2 rose clearly" question, answer parsing, delta arithmetic, opponent routing, the gain cap, and the gate. Asked for a LEVEL of sadness a small model invents a number; asked whether a feeling ROSE or FELL across the last turns it answers a comparative question it can actually answer. A fall is not thrown away: it is applied to Plutchik's antipode (joy -2 -> sadness +2), which keeps activations non-negative, and a full-scale reading is capped at 0.5 so an outside reader cannot out-shout the companion's own `feel`.
+- `judgeQuestions()` / `judgeDeltasFromScores()`: the same ladder expressed as one System One `score` question per emotion, so a decision model answers it without generating text. The answer is a probability-weighted rung index, read against the ladder's centre rather than against zero, and a channel whose distribution was near-flat is dropped: five rungs at total indifference put the top rung at 0.2, so a low-confidence answer is the keyword table's coin flip again, only confident. Both readers produce identical `Partial<Record<Emotion, number>>` deltas, so nothing downstream knows which one looked.
+- `judge.ts`: the pure half of the affect judge - window selection, the "-2 fell clearly .. +2 rose clearly" question, answer parsing, delta arithmetic, opponent routing, the gain cap, and the gate. Asked for a LEVEL of sadness a small model invents a number; asked whether a feeling ROSE or FELL across the last turns it answers a comparative question it can actually answer. A fall is not thrown away: it is applied to Plutchik's antipode (joy -2 -> sadness +2), which keeps activations non-negative, and a full-scale reading is capped at 0.5 so an outside reader cannot out-shout the state it reads. A named decision model can also be handed the reasoning behind each reply: `JudgeTurn.thinking` rides in the window (capped by `JUDGE_THINKING_CHARS`), and the due gate takes a separate, ten-times-larger token budget for that tier (`JUDGE_MIN_CLASSIFIER_TOKENS`) because the two readers are charged differently.
+- The opponent process now produces Solomon & Corbit's hedonic aftereffect: whatever the B-process subtracts below zero re-enters as the channel's wheel antipode instead of being clamped away. Sustained joy attenuates (tolerance) and then leaves a low-grade sadness when it ends (the come-down); sustained grief leaves relief. Before, the subtraction modelled tolerance only and the removed feeling vanished.
+- Sadness now decays slower the more the character ruminates (`character.rumination` has a reader for the first time). Verduyn & Lavrijsen (2015) measured sadness as the longest-lasting emotion - sustained by replaying the event - and this is that mechanism: the same sad event lingers longer for a ruminating companion.
+- Every rate constant in `params.ts` is now documented with the measurement or model that anchors it (Verduyn & Lavrijsen 2015; Russell & Mehrabian 1977; Gebhard 2005; Davidson 1998; Bisconti et al. 2004; Solomon & Corbit 1974; Groves & Thompson 1970; Borbély 1982; Sterling & Eyer 1988; McEwen & Stellar 1993; Frederick & Loewenstein 1999; Bowlby 1969; Ainsworth 1978; Rempel et al. 1985; Watson & Clark 1984; Roberts & Mroczek 2008; Droit-Volet & Meck 2007).
 
 ### Changed
 
@@ -21,12 +27,13 @@
 - Surfaced emotion numbers are the FELT (net) values - activation minus the opponent counter-swing - in the state block, the minimal block and `publicView`, matching the vector mood is computed from. One number per feeling across every surface.
 - Topic beliefs no longer store a `label` that repeats their `key` (`Belief.label` is now optional, the display layer falls back to the key), and neutral evidence crystallises no belief.
 - The English relationship line reads "trust in you", so the trust channel of the relationship cannot be misread as the `trust` emotion (Chinese already split 信赖 and 信任).
-- Guidance tells the model that a message carries no feeling until it reports one: the `feel` tool is the source of affect, not a refinement of a guess.
+- Guidance no longer tells the model to report its feelings with a tool: how a message felt is the judge's reading, taken after the exchange. The capability-guidance line points at `remember` for keeping what the model builds for itself.
+- `judgeDue`: the gate that decides when an outside reading of the exchange could actually say something new - a volume gate measured in the companion's own reply tokens (a stretch of silence contains nothing to read, and a user's message length is not predictable), plus a minimum of new user turns so an overlapping window is not read twice.
 - The state shape is now exactly the fields the kernel reads or writes (`sanitiseState` picks every level key-by-key, so a `state.json` from an older build sheds the deleted fields on load instead of carrying them forever).
-- `judgeDue`: the gate that decides when an outside reading of the exchange could actually say something new (a cooldown plus a minimum of new user turns).
 
 ### Breaking Changes
 
+- The `Lines` i18n record: `feelAck` is renamed `toolAck` (one minimal acknowledgement shared by the inner-life tools), and `feelChannel` / `channelsYouSet` are gone with the feel tool and the host channel registry.
 - `MateEvent.intensity` is gone. Intensity was already derived (`intensityOf(activations)` is the only thing `transition()` reads for "how hard did this land"), so the explicit field was a second dial for the same quantity - and every caller left it at 0 or repeated the vector, meaning a message the model reported as overwhelming could still be flagged as merely loud by a field nobody maintained.
 - `Character` is 17 traits instead of 30: 13 were initialised at birth and never read or written by anything (`humor`, `independence`, `ambition`, `frugality`, `spirituality`, `playfulness`, ...). The kernel only ever nudges what `DRIFTING_TRAITS` lists.
 - `MateState.counters` keeps `messages`, `transitions`, `sleepCycles`, `observations`. `proactiveSent`, `proactiveBlocked` and `dreams` were only ever initialised, so the numbers in `state.json` were statistics the companion was reporting about itself that could never change.

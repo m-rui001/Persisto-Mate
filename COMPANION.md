@@ -1,4 +1,4 @@
-# Companion (a fork of `pi`)
+# Persisto Mate (a fork of `pi`)
 
 A minimal agent harness (`pi`) turned into an AI companion with a persistent inner life, built on the
 **MATE** affective middleware (Lobozov, *MATE: A Deterministic Affective Middleware for LLM-Based
@@ -25,9 +25,9 @@ whether or not anyone is talking to it.
 | Can look at what the user is doing | `extensions/mate/look-tool.ts` | a `look` tool takes a screenshot and hands the image to the model. Open by default per "大胆给权限" — no enable-flag, the model decides when looking is warranted |
 | May not reply / may reply later — but it is the model's CHOICE | `runtime.ts` `onUserMessage`, `daemon.ts` `replyInclination` | P1: the kernel no longer gates inbound messages. Every message reaches the model; the runtime only surfaces an ADVISORY lean (eager/open/muted/withdrawn) + the memories it stirred. The `input` handler always `continue`s |
 | May reach out proactively when the user is silent | `runtime.ts` heartbeat + `index.ts` `onImpulse` | produces an **impulse** grounded in the memory graph; the model decides whether/how to voice it |
-| Feelings also read from outside, by a cheap model, without interrupting the reply | `mate/src/judge.ts`, `extensions/mate/judge-run.ts` | opt-in `settings.mate.judgeModel`: after 3+ new user turns and 10 minutes, a small model scores each emotion's CHANGE (-2..+2) over the last turns; the reading becomes an `appraisal` event (see below) |
+| Feelings also read from outside, by a second model, without interrupting the reply | `mate/src/judge.ts`, `extensions/mate/judge-run.ts` | after ~600 reply tokens and a new user turn, a named classifier or chat model (`settings.mate.judgeModel`) — or the conversation's own model — scores each emotion's CHANGE (-2..+2) over the last turns; the reading becomes an `appraisal` event (see below) |
 | Has its OWN non-preset motivations (autonomy) | `mate/src/{types,params,kernel,daemon}.ts` | 5 stored homeostatic drives plus DERIVED boredom (see below). These only surface as felt urges + grounded thoughts — never as entrenched capability |
-| Reaching out is **not built in** — discovered by the companion | `feel-tool.ts` `channel` + `index.ts` `onImpulse` | we surface the impulse and record channels it found; we never send anything ourselves |
+| Reaching out is **not built in** — discovered by the companion | `index.ts` `onImpulse` + `remember` | we surface the impulse; the companion works out a channel itself and keeps it with `remember`; we never send anything ourselves |
 | Short, natural language; avoid "AI flavor" | system-prompt persona + `companion` section | "reply like a person texting"; state is *felt*, not narrated |
 | Boot catch-up (the machine powers off) | `mate/src/catchup.ts` | closed-form integration across the gap, O(1) over any duration |
 | Minimize per-conversation token cost | `context.ts`, `index.ts` | P2+P5: big STABLE content (identity, character, memory summary) rides a CACHED prompt section paid once; only a small VOLATILE delta rides the ephemeral `context` tail, so it is free to be rich |
@@ -68,8 +68,8 @@ whether or not anyone is talking to it.
 │   runtime.ts      MateRuntime singleton: boot catch-up, appraisal →    │
 │                   transition → recall → persist (memory writes are the │
 │                   model's own, via remember/ponder)                    │
-│   appraisal.ts    deterministic lexical appraisal (zero tokens)        │
-│   feel-tool.ts    `feel`: the model refines its read + records channels│
+│   appraisal.ts    deterministic structural intake (zero tokens)        │
+│   judge-run.ts    the affect judge call: readers, windows, UI lines    │
 │   look-tool.ts    `look`: screenshot what the user is doing (ungated)  │
 │   ponder-tool.ts  `ponder`: private thoughts into memory               │
 │   remember-tool.ts `remember`: memories the model chooses to keep      │
@@ -98,30 +98,58 @@ whether or not anyone is talking to it.
 - **heartbeat** → on a `reach_out` impulse, surface the thought + any advisory cautions to the model and
   let it decide whether and how to express it, including via any channel it discovered for itself.
 
-### The affect judge (opt-in: `settings.mate.judgeModel`)
+### The affect judge (`settings.mate.judgeModel`, optional)
 
-`feel` is the model telling the kernel what a message did to it. It costs an interrupted turn, so a
-model can skip it — and then a whole quiet stretch integrates with no affect at all. The judge is the
-second, automatic path in: after an exchange has carried at least 3 new user turns and 10 minutes since
-the last reading, a CHEAP model (any chat model you name, e.g. `aliyun/qwen-flash`) is shown the last
-turns and asked one comparative question per emotion:
+A message reaches the state with no emotion attached — intake reads only what it ASKS FOR, never how
+it felt. How the exchange FELT is decided afterwards by the judge: once the companion has put about 600
+reply tokens on screen since the last reading, and the user has said something new, a model is shown the
+last turns and asked one comparative question per emotion:
 
 ```
 sadness: -2 -1 0 +1 +2   // "clearly fell / fell a little / unchanged / rose a little / clearly rose"
 ```
 
+Measured in what the companion OUTPUT, not in minutes: a user's message length is not predictable, and a
+period of silence contains no exchange to read.
+
+Two instruments, and the trigger works whether or not you name one. `settings.mate.judgeModel` takes a
+`provider/id` and the judge asks it in whichever form that is:
+
+- **A classifier (preferred).** A decision model answers the eight questions as structured scores in one
+  forward pass and returns the distribution it decided with: nothing to parse, a reading whose
+  distribution was near-flat is dropped, and a split between two rungs stays a fraction (-1.5) instead
+  of being rounded into a rung. Aliyun Model Studio's `decision-model-preview` speaks exactly this
+  protocol (System One), which pi already implements, so it is wired up by
+  `examples/extensions/custom-provider-bailian-decision` rather than by new transport code: put
+  `{ "bailianDecision": { "apiKey": "$DASHSCOPE_API_KEY" } }` in settings, name
+  `bailian/decision-model-preview`, done. `models.json` cannot do this — it defines chat models only, so
+  a classifier has to be registered by an extension that also supplies its implementation.
+- **A chat model.** The same question as prose, answered as one JSON object and parsed. Name one in
+  settings, or the judge asks the model this conversation is already running on — the one instrument that
+  is by definition configured and reachable, so no second provider ever sees the transcript unless you
+  pointed the judge at it.
+
+Whatever reads is named in the UI line (`情绪判读 · 决策模型 ... / ... (对话模型)`), and a failure line
+recommends configuring a decision model rather than going silent.
+
 Deltas, not levels: a small model cannot estimate "how much sadness is in this, 0..1" without an anchor,
 but it can answer "did it rise across these turns". A negative read is routed to Plutchik's antipode
 (joy −2 → +sadness) instead of discarded, so activations stay non-negative; and a full-scale reading
-(±2) moves a channel by 0.5 — half of the 1.0 the companion may report for itself, so an outside opinion
-can never out-shout the person having the feeling.
+(±2) moves a channel by 0.5 — half a channel — so an outside opinion can never out-shout the person
+having the feeling.
 It becomes an `appraisal` event: contact for mood, the relationship and beliefs — never presence, never
 a satisfied drive, never a counted message.
 
-It is OFF unless you name a model, because it sends what you said out of the conversation. The window
-holds only speech: no tool output, no injected state block, no private notes. `packages/mate/judge.ts`
-is the pure half (question, parsing, arithmetic, the gate) and is unit-tested; the network half is
-`extensions/mate/judge-run.ts`.
+Privacy and the two windows. The window holds what was said: no tool output, no injected state block, no
+private notes — EXCEPT that a named decision model is also handed the companion's reasoning behind each
+reply, because a classifier takes a bigger window in one forward pass at no per-token price, and how a
+feeling moved shows up in the deliberation long before the polished line. That is also why the decision
+model is triggered by a bigger budget (~6,000 reply+thinking tokens vs ~600 reply tokens): the two
+readers are charged differently and must not share one number. A chat-model reader never sees thinking.
+Whatever reads is named in the UI line, with the window's contents (`6轮对话 + 思考`). `packages/mate/judge.ts`
+is the pure half (the ladder as questions and as a prompt, answer parsing, arithmetic, the gate) and is
+unit-tested; the network half is `extensions/mate/judge-run.ts`, which picks the instrument by the model
+type the name resolves to.
 
 ---
 
@@ -229,8 +257,8 @@ by rate of change** so the expensive content is cached (P5):
   body (open/close summary from `session.ts`), mood, drives, relationship, self, impulse, inclination
   lean for THIS inbound message, specific recalled memories (P4), last observation. Small, always
   fresh, never persisted.
-- **Appraisal is lexical, zero tokens** by default; the model only pays for a richer read via `feel`
-  when a message actually matters.
+- **Appraisal (intake) is structural, zero tokens**: it reads only what a message asks for. How the
+  exchange felt is the judge's reading, taken after the fact.
 
 Because the heavy content is cached, the volatile tail is FREE to be richer than 73 tokens — the mind
 sees its real state each turn without re-paying for stable content every time.
@@ -250,15 +278,16 @@ Without `npm link`, run the bundle directly: `cd packages/coding-agent && node d
 
 - `/mate` — public mood/drives snapshot (never shows private thought content).
 - `/language` — pick the companion's thinking/speaking language (中文 / English); first launch prompts, and the choice persists in `lang.json`.
-- `feel` — the model's tool to refine its affective read and record channels it found for itself.
-- `remember` — store a memory the model chose to keep (one line + topic tags); nothing is remembered automatically.
+- `remember` — store a memory the model chose to keep (one line + topic tags); nothing is remembered automatically. A self-made reach-out channel is kept here too.
 - `ponder` — private thoughts into memory; the call renders nothing and the content is never shown.
 - State persists in `~/.mate/agent/mate/` (override with `MATE_CODING_AGENT_DIR`).
 
 ## Naming (avoiding collision with pi)
 
-The distribution is rebranded to `mate` via `package.json` `piConfig` (`name: "mate"`,
-`configDir: ".mate"`) and a `mate`-only `bin`. This matters because a real pi on the same machine
+The product name is **Persisto Mate**; "MATE" on its own refers to the paper the affective middleware
+builds on. The distribution is rebranded to `mate` via `package.json` `piConfig` (`name: "mate"`,
+`configDir: ".mate"`) and a `mate`-only `bin` — deliberately kept short, so the user still types
+`mate` to launch it. This matters because a real pi on the same machine
 would otherwise clash on two fronts: the `pi` executable on `PATH`, and the shared `~/.pi/agent`
 config directory (sessions, `auth.json`, `settings.json`, tools). Everything user-facing derives
 from `APP_NAME`/`CONFIG_DIR_NAME` (`config.ts`), so `getAgentDir()` → `~/.mate/agent`, the state
@@ -348,6 +377,6 @@ unit suite (including the i18n invariants and SPARK determinism), and a full bun
   `IS_OFFICIAL_DISTRIBUTION` — a `mate` rebrand must not ping `pi.dev` and misreport a "pi" update.
 - **No built-in reach-out action.** Email/webhook/scheduling are *not* implemented. The heartbeat
   surfaces an impulse; the companion uses its existing bash/MCP/install powers to discover a channel
-  and records it via `feel`. This is the explicit requirement, honored structurally.
+  and keeps it via `remember`. This is the explicit requirement, honored structurally.
 - **Nothing throws into pi's event loop.** Every handler is defensive and degrades to normal-assistant
   behaviour; a companion that crashes on boot is worse than one with no inner life.

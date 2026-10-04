@@ -6,7 +6,7 @@
  * companion's genuine first impression of the message — so a fabricated reading propagated into mood,
  * the relationship, memory charge and SPARK beliefs. These tests pin the replacement contract: what a
  * message ASKS FOR is inferred from punctuation and work verbs; how it FELT is not inferred at all.
- * The only path into the affective state is the model's own `feel` report (feel-tool.ts -> refine()).
+ * The only path into the affective state is the judge's reading of the exchange (judge-run.ts).
  */
 
 import { describe, expect, it } from "vitest";

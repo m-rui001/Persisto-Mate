@@ -1,6 +1,6 @@
 # Uninstall MATE: close running companions, remove the install directory and the PATH entry.
 # Usage (PowerShell):
-#   iwr https://raw.githubusercontent.com/m-rui001/MATE/main/scripts/uninstall.ps1 -useb | iex
+#   iwr https://raw.githubusercontent.com/m-rui001/Persisto-Mate/main/scripts/uninstall.ps1 -useb | iex
 # The companion's state and memories in ~/.mate are KEPT - delete that directory
 # yourself if you want them gone too.
 $ErrorActionPreference = "Stop"

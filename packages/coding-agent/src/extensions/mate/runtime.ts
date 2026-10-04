@@ -39,7 +39,6 @@ import {
 	encode,
 	gapLabel,
 	type ImpulseDecision,
-	type Intent,
 	intensityOf,
 	judgeDue,
 	type Lang,
@@ -117,17 +116,6 @@ export class MateRuntime {
 	private heartbeat: ReturnType<typeof setInterval> | null = null;
 	private lastCatchUpNote = "";
 	private booted = false;
-	/** Snapshot of the state immediately before the last user message. `refine` replays from here with
-	 * the vector the model reports instead of applying a SECOND contact event, so the feel-tool never
-	 * double-counts time (states are immutable; holding the ref is safe). */
-	private preEventState: MateState | null = null;
-	/** The text of that same message, replayed into the refined event so topic beliefs still bear
-	 * evidence from it (the kernel matches belief subjects against `event.text`). */
-	private preEventText = "";
-	private lastEventT = 0;
-	/** Channels the model has told us about (e.g. it set up its own email). Not used by us directly;
-	 * surfaced back into context so the companion remembers it has them. */
-	private discoveredChannels: string[] = [];
 	/** The advisory reply lean computed for the pending inbound message (P1), surfaced in the volatile
 	 * state block; the model may ignore it. Cleared once consumed. */
 	private inclination: ReplyInclination | null = null;
@@ -137,13 +125,15 @@ export class MateRuntime {
 	 * Cleared once rendered — they describe what just happened, not a lasting state. */
 	private pendingNotes: string[] = [];
 	/**
-	 * Affect-judge bookkeeping: when the last outside reading was taken and how many user turns have
-	 * arrived since. Deliberately process state, not persisted — the reading is about a LIVE transcript,
-	 * and a new session's transcript is new evidence whether or not the last process judged one. Which
-	 * model does the reading is a HOST question and lives in the extension (settings `mate.judgeModel`),
-	 * not here: the runtime holds the inner state, never a network configuration.
+	 * Affect-judge bookkeeping: how much exchange has arrived since the last outside reading — reply
+	 * tokens the companion put on screen, thinking tokens it spent behind them, and user turns.
+	 * Deliberately process state, not persisted — the reading is about a LIVE transcript, and a new
+	 * session's transcript is new evidence whether or not the last process judged one. Which model does
+	 * the reading is a HOST question and lives in the extension (settings `mate.judgeModel`), not here:
+	 * the runtime holds the inner state, never a network configuration.
 	 */
-	private lastJudgeAt = 0;
+	private tokensSinceJudge = 0;
+	private thinkingSinceJudge = 0;
 	private turnsSinceJudge = 0;
 	private judgeInFlight = false;
 
@@ -223,10 +213,26 @@ export class MateRuntime {
 	/**
 	 * Whether an outside reading of the exchange is due. The caller (the extension) owns the decision
 	 * about WHICH model reads and whether one is configured at all; the runtime only knows how much has
-	 * happened since the last reading.
+	 * been said since the last reading — the reply tokens the companion put on screen, and the user turns.
 	 */
-	judgeDue(now = Date.now()): boolean {
-		return judgeDue({ now, lastAt: this.lastJudgeAt, userTurns: this.turnsSinceJudge });
+	judgeDue(readsThinking: boolean): boolean {
+		return judgeDue({
+			outputTokens: this.tokensSinceJudge,
+			thinkingTokens: this.thinkingSinceJudge,
+			readsThinking,
+			userTurns: this.turnsSinceJudge,
+		});
+	}
+
+	/**
+	 * Note what the companion just produced, for the reading trigger. The two numbers stay separate
+	 * because the two readers are charged differently: a decision model is handed the reasoning too and
+	 * costs nothing per token for it, while a chat model reads only the reply and is billed for every
+	 * one of these tokens whether or not the user ever saw them.
+	 */
+	noteRunOutput(replyTokens: number, thinkingTokens: number): void {
+		this.tokensSinceJudge += Math.max(0, replyTokens);
+		this.thinkingSinceJudge += Math.max(0, thinkingTokens);
 	}
 
 	/** Claim a reading: marks one as in flight so a beat and a `remember` cannot both fire one. */
@@ -241,27 +247,29 @@ export class MateRuntime {
 	}
 
 	/**
-	 * Apply the reading a judge model made of a stretch of recent exchange. Unlike `refine` this is NOT a
-	 * replay: the window spans turns already lived, and time has genuinely moved on, so the event stacks
-	 * on the current state at the current clock. The kernel counts an `appraisal` as contact for mood,
-	 * relationship and beliefs — but not as the user being here, not as a drive satisfied, not as a
-	 * message counted, so a background reading cannot fake a conversation.
+	 * A reading has been taken — or attempted and failed. Either way the next one waits for new exchange
+	 * first. Failures are stamped too because the judge now runs by default: a reader that cannot answer
+	 * would otherwise report the same problem on every single turn.
+	 */
+	judgeAttempted(): void {
+		this.tokensSinceJudge = 0;
+		this.thinkingSinceJudge = 0;
+		this.turnsSinceJudge = 0;
+	}
+
+	/**
+	 * Apply the reading a judge model made of a stretch of recent exchange. The window spans turns
+	 * already lived, and time has genuinely moved on, so the event stacks on the current state at the
+	 * current clock. The kernel counts an `appraisal` as contact for mood, relationship and beliefs —
+	 * but not as the user being here, not as a drive satisfied, not as a message counted, so a
+	 * background reading cannot fake a conversation. This is the ONE path a message's emotional impact
+	 * takes into the state: intake applies no affect of its own (see appraisal.ts), and an outside
+	 * reading — not a keyword table, not a guess — is what a feeling is made of.
 	 */
 	judgeRead(activations: Partial<EmotionVector>): void {
-		this.lastJudgeAt = Date.now();
-		this.turnsSinceJudge = 0;
 		if (intensityOf(activations) <= 0) return;
 		try {
-			const now = Date.now();
-			const event = { kind: "appraisal" as const, activations, intent: "chat" as const, t: now };
-			this.applyEvent(event);
-			// A reading that lands mid-turn must move the snapshot `refine` replays from as well.
-			// Otherwise that replay writes the pre-judgement state back and the reading vanishes — the
-			// judge would be real only while the companion was quiet, which is when nobody is talking.
-			if (this.preEventState) {
-				const base = this.preEventState;
-				this.preEventState = transition(base, event, now - base.t).state;
-			}
+			this.applyEvent({ kind: "appraisal" as const, activations, intent: "chat" as const, t: Date.now() });
 		} catch (err) {
 			this.onError(err);
 		}
@@ -378,10 +386,10 @@ export class MateRuntime {
 	 * user's raw words before the model has even read them. Per P1, the model decides whether to
 	 * answer, answer briefly, or let it sit, reading this in the context block.
 	 *
-	 * The contact event carries NO activations. A message's emotional impact is not something a
-	 * substring table can decide (see appraisal.ts); it is something the companion reports about
-	 * itself, through `feel`. Until then this transition does the structural work only: contact,
-	 * drives, awareness, the clock. Does NOT compose a reply.
+	 * The contact event carries NO activations: what the message FELT like is not something a substring
+	 * table can decide (see appraisal.ts), it is what the judge reads out of the exchange afterwards
+	 * (see judge-run.ts). Until a reading lands, this transition does the structural work only:
+	 * contact, drives, awareness, the clock. Does NOT compose a reply.
 	 */
 	onUserMessage(text: string): {
 		appraisal: AppraisalResult;
@@ -391,10 +399,6 @@ export class MateRuntime {
 		const now = Date.now();
 		const appraisal = appraise(text);
 		try {
-			// Remember the pre-event state so `refine` can replay with the model's vector, not stack.
-			this.preEventState = this.state;
-			this.preEventText = text;
-			this.lastEventT = now;
 			this.turnsSinceJudge++;
 			this.applyEvent({
 				kind: "user_message",
@@ -468,31 +472,6 @@ export class MateRuntime {
 				this.pendingNotes.push(note);
 				if (this.pendingNotes.length > 8) this.pendingNotes.shift();
 			}
-		} catch (err) {
-			this.onError(err);
-		}
-	}
-
-	/**
-	 * Put the model's own read of the LAST user message into its state. Intake applies no affect
-	 * (appraisal.ts reads structure, not feeling), so this is how a message moves the companion's
-	 * feelings one at a time. The event is REPLAYED from the pre-message snapshot rather than stacked on
-	 * top, so the message is counted once — same clock, same drive satisfaction, same contact — with the
-	 * reported vector now driving the kick, the mood, the relationship and the belief evidence.
-	 */
-	refine(activations: Partial<EmotionVector>, intent: Intent): void {
-		try {
-			const base = this.preEventState ?? this.state;
-			const t = this.lastEventT || Date.now();
-			const r = transition(
-				base,
-				{ kind: "user_message", activations, intent, text: this.preEventText, t },
-				t - base.t,
-			);
-			this.persisted = { ...this.persisted, state: r.state };
-			// The refine re-reads affect; it does not change any reply choice (there is no gate — the
-			// model already owns that).
-			this.persistSafe();
 		} catch (err) {
 			this.onError(err);
 		}
@@ -604,7 +583,6 @@ export class MateRuntime {
 	 */
 	context(now = Date.now(), opts: { minimal?: boolean } = {}): string {
 		try {
-			const L = linesFor(this.lang);
 			const gapNote = this.lastCatchUpNote ? gapLabel(now - this.state.lastInteraction, this.lang) : undefined;
 			if (opts.minimal) {
 				return minimalContext(this.state, { now, tz: this.tz, gapLabel: gapNote, lang: this.lang });
@@ -614,7 +592,7 @@ export class MateRuntime {
 			const signal = this.takePendingSignal();
 			const notes = this.pendingNotes;
 			this.pendingNotes = [];
-			const body = stateContext(this.state, {
+			return stateContext(this.state, {
 				now,
 				tz: this.tz,
 				gapLabel: gapNote,
@@ -624,9 +602,6 @@ export class MateRuntime {
 				session: sessionSummary(this.persisted.sessions, now, this.lang) || undefined,
 				lang: this.lang,
 			});
-			// Surface discovered channels so the companion remembers what it set up for itself.
-			const channels = this.discoveredChannels.length ? L.channelsYouSet(this.discoveredChannels.join(L.sep)) : "";
-			return `${body}${channels}`;
 		} catch (err) {
 			this.onError(err);
 			return "";
@@ -641,32 +616,6 @@ export class MateRuntime {
 		} catch (err) {
 			this.onError(err);
 			return {};
-		}
-	}
-
-	/**
-	 * Record that the model discovered a reach-out channel (email, webhook, ...) on its own. The fact
-	 * surfaces in the context block for this process AND is folded into the memory graph as a private
-	 * memory, so it survives a restart: recall can bring "I can reach them via email" back after the
-	 * companion wakes up, the same way any other memory persists. Nothing here takes any action.
-	 */
-	addDiscoveredChannel(name: string): void {
-		if (this.discoveredChannels.includes(name)) return;
-		this.discoveredChannels.push(name);
-		try {
-			const now = Date.now();
-			this.persisted = {
-				...this.persisted,
-				memory: encode(this.persisted.memory, {
-					text: `I can reach them via ${name}`,
-					pad: this.state.mood,
-					t: now,
-					private: true,
-				}),
-			};
-			this.persistSafe();
-		} catch (err) {
-			this.onError(err);
 		}
 	}
 
@@ -694,7 +643,31 @@ export class MateRuntime {
 			this.persisted = { ...this.persisted, state };
 			this.persistSafe();
 		}
-		if (decision.action === "reach_out") onImpulse(decision, decision.thought);
+		if (decision.action === "reach_out") {
+			this.recordBeatThought(decision.thought);
+			onImpulse(decision, decision.thought);
+			return;
+		}
+		if (decision.action === "think_only") this.recordBeatThought(decision.thought);
+	}
+
+	/**
+	 * The beat's thought goes into the observations ring — that ring is the inner monologue the NEXT
+	 * beat reads ("last thought" in the state block), so a thought survives the beat that had it
+	 * instead of evaporating. The text is kernel-authored from the companion's own memories, never
+	 * user content, so it stays inside the private state block.
+	 */
+	private recordBeatThought(thought: Thought): void {
+		const last = this.state.observations[this.state.observations.length - 1];
+		if (thought.text && thought.text !== last) {
+			this.applyEvent({
+				kind: "self_observation",
+				activations: {},
+				intent: "chat",
+				text: thought.text,
+				t: Date.now(),
+			});
+		}
 	}
 
 	private computeImpulse(now: number, userActive: boolean): TickResult {

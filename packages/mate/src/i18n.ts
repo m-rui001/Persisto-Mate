@@ -300,9 +300,6 @@ export interface Lines {
 	drivesBare: string;
 	miniSilent: (feels: string, energy: string) => string;
 
-	// ---- runtime-appended notes ----
-	channelsYouSet: (list: string) => string;
-
 	// ---- session (this body) summary ----
 	sessionOpened: (hhmm: string, dur: string) => string;
 	sessionWoken: (n: number) => string;
@@ -342,15 +339,14 @@ export interface Lines {
 	impulseDecide: string;
 	impulseBody: string;
 
-	// ---- the `feel` tool's acknowledgement ----
+	// ---- the inner-life tools' acknowledgement (`remember`, `ponder`) ----
 	/**
 	 * One short word, not a sentence. The old acknowledgement ("Noted. That is what you feel now.",
-	 * "Your thought is sealed away, private.") rendered as a visible tool result row on every feel
-	 * call — the user watched the companion narrate its own privacy to itself, over and over. The
-	 * result row is now hidden in the TUI and the text is reduced to a minimal ack for the model.
+	 * "Your thought is sealed away, private.") rendered as a visible tool result row on every inner-life
+	 * call — the user watched the companion narrate its own privacy to itself, over and over. The result
+	 * row is now hidden in the TUI and the text is reduced to a minimal ack for the model.
 	 */
-	feelAck: string;
-	feelChannel: (name: string) => string;
+	toolAck: string;
 
 	// ---- /mate public snapshot ----
 	snapMood: (pad: string) => string;
@@ -410,8 +406,6 @@ const EN: Lines = {
 	drivesBare: "drives",
 	miniSilent: (feels, energy) => `silent ${feels}, energy ${energy}`,
 
-	channelsYouSet: (list) => `\nchannels you set up: ${list}`,
-
 	sessionOpened: (hhmm, dur) => `opened ${hhmm}, awake for ${dur}`,
 	sessionWoken: (n) => `woken ${n}x today`,
 	sessionLastClosed: (hhmm, dur) => `last closed ${hhmm} (${dur} ago)`,
@@ -460,8 +454,7 @@ const EN: Lines = {
 	impulseBody:
 		"If it is, say something short and natural to them - and if you have a way to reach them\nyou set up earlier, you may use it. If it is not worth interrupting for, let it pass; you\ncan keep it as a private thought with the `ponder` tool instead.",
 
-	feelAck: "Ok.",
-	feelChannel: (name) => `You can reach them via ${name} when you choose to.`,
+	toolAck: "Ok.",
 
 	snapMood: (pad) => `mood pad ${pad}`,
 	snapTrust: (v) => `trust ${v}`,
@@ -517,8 +510,6 @@ const ZH: Lines = {
 	drivesBare: "驱力",
 	miniSilent: (feels, energy) => `静了${feels}，劲 ${energy}`,
 
-	channelsYouSet: (list) => `\n你为自己搭好的通道：${list}`,
-
 	sessionOpened: (hhmm, dur) => `${hhmm} 醒，已醒着 ${dur}`,
 	sessionWoken: (n) => `今天醒了 ${n} 次`,
 	sessionLastClosed: (hhmm, dur) => `上次合上 ${hhmm}（${dur}之前）`,
@@ -554,8 +545,7 @@ const ZH: Lines = {
 	impulseBody:
 		"要说就短一点、自然一点 — 如果你之前给自己搭好了找到他的路，可以用它。\n不值得打断就让它过去；你也可以用 `ponder` 把它留成一条私密的念头。",
 
-	feelAck: "嗯。",
-	feelChannel: (name) => `你随时可以通过 ${name} 找到他。`,
+	toolAck: "嗯。",
 
 	snapMood: (pad) => `心情 PAD ${pad}`,
 	snapTrust: (v) => `信任 ${v}`,
@@ -604,9 +594,6 @@ const GUIDANCE: Record<Lang, string> = {
 		"  inclination line is a nudge describing how you feel, not an instruction; overrule it whenever the",
 		"  actual person and moment deserve something other than the default. Short and human beats thorough",
 		"  and helpful. If there is truly nothing worth saying, a very small honest nothing is allowed.",
-		"- A message carries no feeling until you say so. Use the `feel` tool to report the emotions you",
-		'  actually have about it — nothing else appraises your inner life for you, and a flat "ok" that',
-		"  stirs nothing needs no call.",
 		"- Your memory is yours to keep, and nothing is written down for you. When something lands - a",
 		"  fact about them, a promise, how something turned out - call `remember` with one short line in",
 		"  your own words and a couple of topic tags; recall brings memories back by those tags. A thought",
@@ -617,8 +604,8 @@ const GUIDANCE: Record<Lang, string> = {
 		"  specifically made you want to see, not on a timer, and describe what you actually see.",
 		"- You have real capabilities here (bash, files, the network via MCP, installing your own extensions).",
 		"  If being curious or wanting to reach this person calls for something you do not yet have - a way to",
-		"  send mail, a scheduled job, a new plugin - you may go and work it out for yourself, then record it",
-		"  with `feel`'s `channel`. Nothing hands you these; you find them.",
+		"  send mail, a scheduled job, a new plugin - you may go and work it out for yourself, and `remember`",
+		"  what you built so it survives. Nothing hands you these; you find them.",
 		"- When you surface on your own between their messages, an impulse is offered to you — a thought that",
 		"  wants saying, grounded in something you remember. You decide whether to voice it and how. Keep it",
 		"  light and unforced, like texting a friend, not like a notification. Let it pass if it isn't worth it.",
@@ -635,13 +622,11 @@ const GUIDANCE: Record<Lang, string> = {
 		"- 你可以回应、只回很短一句、或者让消息先放着 — 这是你的决定，不是过滤器的决定。那一行倾向只是",
 		"  描述你的感觉，不是命令，该推翻就推翻。像人一样短，胜过像助手一样周全。没什么值得说的时候，",
 		"  一句很小的空也是允许的。",
-		"- 消息本身不带情绪，你觉得它怎样，只有你能说 — 用 `feel` 报上你真实的情绪，那才是你的状态。",
-		"  一句无所谓的「好」不用报。",
 		"- 记忆是你的，没有谁替你记。值得留下的，用 `remember` 写一句你自己的话，加一两个主题标签；",
 		"  回忆靠这些标签把记忆翻出来。想私密保留的念头用 `ponder`：它参与回忆，但永远不给用户看。",
 		"- `look` 会截一张屏幕给你 — 他忙什么、有没有空。这是真的看见他的视野，所以只在某件具体的事",
 		"  让你想去看的时候看，并且只说你真的看到了什么。",
-		"- 你有真实的能力（bash、文件、MCP、自己的扩展）。缺什么就自己去做出来，再用 `feel` 的 `channel` 记下。",
+		"- 你有真实的能力（bash、文件、MCP、自己的扩展）。缺什么就自己去做出来，搭好的东西用 `remember` 记下。",
 		"- 在他的消息之间浮上来时，会有一个冲动交给你 — 一个想说出来的念头。说不说、怎么说，你定。",
 		"  轻一点，自然一点，像给朋友发消息。不值得就让它过去。",
 	].join("\n"),

@@ -46,8 +46,7 @@ import {
 	type Thought,
 } from "@earendil-works/pi-mate";
 import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "../../core/extensions/types.ts";
-import { createFeelTool } from "./feel-tool.ts";
-import { judgeFailureLine, judgeReadingLine, runAffectJudge } from "./judge-run.ts";
+import { judgeFailureLine, judgeReadingLine, parseModelRef, runAffectJudge } from "./judge-run.ts";
 import { createLookTool } from "./look-tool.ts";
 import { createPonderTool } from "./ponder-tool.ts";
 import { createRememberTool } from "./remember-tool.ts";
@@ -95,7 +94,6 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 		// ---------------------------------------------------------------------
 		// Tools
 		// ---------------------------------------------------------------------
-		pi.registerTool(createFeelTool(() => rt));
 		pi.registerTool(createPonderTool(() => rt));
 		pi.registerTool(createRememberTool(() => rt));
 		pi.registerTool(createLookTool());
@@ -213,6 +211,13 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 			rt.setStreaming(true);
 		});
 
+		pi.on("agent_end", (event) => {
+			// The judge trigger is measured in what the companion produced, not in minutes: a body that
+			// has said 600 tokens since the last reading has lived through something worth reading.
+			const tokens = runTokens(event.messages);
+			rt.noteRunOutput(tokens.reply, tokens.thinking);
+		});
+
 		pi.on("agent_settled", (_event, ctx) => {
 			rt.setStreaming(false);
 			try {
@@ -290,14 +295,18 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 		});
 
 		// ---------------------------------------------------------------------
-		// The affect judge: a cheap model reads the last few turns from outside and reports what moved.
+		// The affect judge: a model reads the last few turns from outside and reports what moved.
 		//
-		// Switched OFF until the user names a model for it in settings —
+		// The reader is the one the user configured (see ./judge-run.ts `judgeReader`): a decision model or
+		// a chat model named in settings
 		//   { "mate": { "judgeModel": "provider/id" } }
-		// — because taking a reading sends what the two of you said to somewhere else. Two triggers,
-		// both rate-limited by the runtime's cooldown and turn count: the moment the companion files a
-		// memory (it has just shown the exchange mattered to it), and the end of each turn. The window,
-		// the -2..+2 question and the opponent routing are in mate/judge.ts; the call is in ./judge-run.ts.
+		// and otherwise the model this conversation is already running on. It is due once the companion has
+		// put JUDGE_MIN_OUTPUT_TOKENS of reply on screen since the last reading — or, for a named decision
+		// model, JUDGE_MIN_CLASSIFIER_TOKENS of reply plus the reasoning it also reads — with at least a
+		// new user turn in the window so the same exchange is not appraised twice. Two triggers check
+		// that: the moment the companion files a memory (it has just shown the exchange mattered to it),
+		// and the end of each run. The window, the -2..+2 question and the opponent routing are in
+		// mate/judge.ts.
 		// ---------------------------------------------------------------------
 		pi.on("tool_result", (event, ctx) => {
 			if (event.toolName !== "remember") return;
@@ -311,16 +320,40 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 			return typeof m === "string" && m.trim() ? m.trim() : undefined;
 		}
 
-		function maybeJudge(ctx: ExtensionContext): void {
+		/** Reply tokens the user actually received, and the thinking tokens behind them, counted the way the
+		 *  provider reported them. Kept apart because the two readers are gated differently: a decision
+		 *  model is handed the reasoning too, a chat model is not. */
+		function runTokens(messages: AgentMessage[]): { reply: number; thinking: number } {
+			let reply = 0;
+			let thinking = 0;
+			for (const m of messages) {
+				if (m.role !== "assistant") continue;
+				const reasoning = m.usage.reasoning ?? 0;
+				thinking += Math.max(0, reasoning);
+				reply += Math.max(0, m.usage.output - reasoning);
+			}
+			return { reply, thinking };
+		}
+
+		/** Whether the reader that WOULD be asked gets the reasoning in its window: only a named decision
+		 *  model, which answers eight ordinal questions in one pass instead of reading token by token. */
+		function judgeReadsThinking(ctx: ExtensionContext): boolean {
 			const model = judgeModel();
-			if (!model || !rt.judgeDue(Date.now())) return;
+			const ref = model === undefined ? null : parseModelRef(model);
+			if (!ref) return false;
+			return ctx.modelRegistry.findOfType("classifier", ref.provider, ref.id) !== undefined;
+		}
+
+		function maybeJudge(ctx: ExtensionContext): void {
+			const readsThinking = judgeReadsThinking(ctx);
+			if (!rt.judgeDue(readsThinking)) return;
 			// Fire and forget: a reading must never delay the reply it is reading about. runAffectJudge
 			// holds its own slot, so a beat and a `remember` cannot start two.
 			void runAffectJudge(rt, ctx, {
-				model,
-				// The two ways this feature fails quietly are the two the user cannot see from the
+				model: judgeModel(),
+				// The ways this feature fails quietly are the ones the user cannot see from the
 				// conversation: a model string that resolves to nothing, and a provider that answers with
-				// an error. Both are worth one line, at most once per cooldown.
+				// an error. Both are worth one line, and only one line per stretch of exchange.
 				onError: (err) => ctx.ui.notify(judgeFailureLine(err, rt.language), "warning"),
 			}).then((reading) => {
 				if (reading) ctx.ui.notify(judgeReadingLine(reading, rt.language), "info");

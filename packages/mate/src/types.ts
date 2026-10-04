@@ -207,10 +207,9 @@ export interface MateEvent {
 	kind: "user_message" | "proactive" | "self_observation" | "appraisal" | "sleep" | "wake" | "tick";
 	/**
 	 * Plutchik activations in [0,1] — the only LLM-influenced input, and deliberately never a guess.
-	 * Intake applies contact events with an empty vector; affect arrives either from the model's own
-	 * `feel` report or from the periodic judge (see kernel.ts, `appraisal` events), and nothing else.
-	 * There is no separate intensity field: the kernel measures a felt event by this vector
-	 * (`intensityOf`), so a second number could only ever disagree with it.
+	 * Intake applies contact events with an empty vector; affect arrives only from the periodic judge
+	 * (see kernel.ts, `appraisal` events). There is no separate intensity field: the kernel measures a
+	 * felt event by this vector (`intensityOf`), so a second number could only ever disagree with it.
 	 */
 	activations: Partial<EmotionVector>;
 	intent: Intent;

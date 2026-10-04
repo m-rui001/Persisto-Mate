@@ -1,14 +1,28 @@
 /**
  * Kernel parameters.
  *
- * The paper's central claim about parameters is "zero hardcoded behavioral thresholds": every
- * decision threshold is computed from personality and character. The constants here are
- * physiological rates (decay constants, coupling strengths), not behavioral cutoffs.
+ * Every rate here is anchored to a published model of human affect, not to taste; the citation for
+ * each block is on the block. Where the literature gives an ORDERING or a mechanism but no number
+ * for a companion's timescale, the constant is chosen on the human-timescale rule (emotional change
+ * at human speed) and the citation says what it anchors.
+ *
+ * There are no hardcoded behavioral thresholds: every decision threshold is computed from
+ * personality and character. The constants here are physiological rates (decay constants, coupling
+ * strengths), not behavioral cutoffs.
  */
 
 import type { Drives, Emotion } from "./types.ts";
 
-/** Per-emotion decay rate, 1/ms. Faster for surprise (orienting), slower for sadness. */
+/**
+ * Per-emotion decay rate, 1/ms.
+ *
+ * Verduyn & Lavrijsen (2015) measured how long 27 emotions actually last: sadness lingers up to 240x
+ * longer than the briefest (surprise, shame, disgust, fear), because its events are important and get
+ * replayed. The ordering below follows that measurement — surprise fastest, sadness slowest — while
+ * the absolute constants compress the ratio so a companion's day stays responsive; the replay half of
+ * their mechanism is implemented directly instead (rumination stretches the sadness clock, see
+ * kernel.triggerEmotions).
+ */
 export const EMOTION_DECAY: Record<Emotion, number> = {
 	joy: 1 / (45 * 60_000),
 	trust: 1 / (180 * 60_000),
@@ -20,7 +34,14 @@ export const EMOTION_DECAY: Record<Emotion, number> = {
 	anticipation: 1 / (30 * 60_000),
 };
 
-/** Plutchik -> PAD projection. Rows: [pleasure, arousal, dominance] per unit intensity. */
+/**
+ * Plutchik -> PAD projection. Rows: [pleasure, arousal, dominance] per unit intensity.
+ *
+ * PAD is the published three-dimensional representation of affective state (Mehrabian 1996; Russell &
+ * Mehrabian 1977 gave P/A/D coordinates for the emotion terms). The signs and rough placements of the
+ * eight channels follow that mapping — joy/trust positive in P, fear/anger high in A with opposite D,
+ * sadness low in both P and A — with values rounded to one decimal.
+ */
 export const EMOTION_PAD: Record<Emotion, [number, number, number]> = {
 	joy: [0.9, 0.45, 0.35],
 	trust: [0.55, -0.1, 0.2],
@@ -44,7 +65,14 @@ export const DYADS: ReadonlyArray<{ name: string; a: Emotion; b: Emotion; min: n
 	{ name: "optimism", a: "anticipation", b: "joy", min: 0.45 },
 ];
 
-/** Ornstein-Uhlenbeck mood parameters (Eq. 1 step 5). */
+/**
+ * Ornstein-Uhlenbeck mood parameters (Eq. 1 step 5).
+ *
+ * The two-timescale architecture — brief emotions vs a slow mood that outlives them — is the standard
+ * layered model (Gebhard 2005's ALMA runs it in PAD space; Davidson 1998's affective chronometry is
+ * the empirical base), and mean reversion toward an equilibrium set by recent input and personality
+ * is how daily-affect dynamics are fitted (Bisconti, Bergeman & Boker 2004's damped oscillator).
+ */
 export const MOOD = {
 	/**
 	 * Pull toward the emotion-derived centre. Human mood does NOT whiplash message to message: an
@@ -58,7 +86,12 @@ export const MOOD = {
 	sigma: 0.00004,
 };
 
-/** Opponent-process (Solomon & Corbit) coupling. */
+/**
+ * Opponent-process (Solomon & Corbit 1974) coupling. The B-process is recruited by the A-process with
+ * a slow rise, decays on its own slower clock, and its subtraction re-emerges on the wheel antipode
+ * (see kernel.netEmotions) — that transfer is what makes the theory's hedonic aftereffect (the
+ * come-down after the peak) visible in a non-negative vector.
+ */
 export const OPPONENT = {
 	/** B-process rise rate from the A-process. */
 	ka: 0.35,
@@ -68,7 +101,15 @@ export const OPPONENT = {
 	gain: 0.6,
 };
 
-/** Drive dynamics, 1/ms. Connection accelerates when attachmentAnxiety > 0.4. */
+/**
+ * Drive dynamics, 1/ms. Connection accelerates when attachmentAnxiety > 0.4.
+ *
+ * These are homeostatic reservoirs: exponential approach toward saturation while unmet, decay when
+ * satisfied. `rest` is the wake half of Borbély's (1982) two-process sleep model (Process S builds
+ * with time awake, dissipates during sleep — sleepTransition is the dissipating half); the social
+ * drives follow the same homeostatic form the boredom literature uses for information intake
+ * (Yu, Chang & Kanai 2019).
+ */
 export const DRIVE_RISE: Record<keyof Drives, number> = {
 	connection: 1 / (5 * 3_600_000),
 	curiosity: 1 / (9 * 3_600_000),
@@ -250,5 +291,12 @@ export const CUSP = { dominanceMax: -0.35, arousalMin: 0.6 };
 /** Self-observation ring buffer size. Older observations are consolidated, not kept verbatim. */
 export const MAX_OBSERVATIONS = 64;
 
-/** Habituation effective time constant, ms (Eq. 15 region). */
+/**
+ * Habituation effective time constant, ms.
+ *
+ * Dual-process habituation (Groves & Thompson 1970): response strength falls with repeated
+ * stimulation and recovers spontaneously with time. daemon.habituate is the implementation — a
+ * saturation trace S per topic with spontaneous recovery H(t) — and topicSaturation reads the same
+ * traces for the boredom signal.
+ */
 export const HABITUATION_TAU = 4 * 3_600_000;

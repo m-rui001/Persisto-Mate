@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Uninstall MATE: remove the install directory and the ~/.local/bin link.
-# Usage: curl -fsSL https://raw.githubusercontent.com/m-rui001/MATE/main/scripts/uninstall.sh | bash
+# Uninstall Persisto Mate: remove the install directory and the ~/.local/bin link.
+# Usage: curl -fsSL https://raw.githubusercontent.com/m-rui001/Persisto-Mate/main/scripts/uninstall.sh | bash
 # The companion's state and memories in ~/.mate are KEPT - delete that directory
 # yourself if you want them gone too.
 set -euo pipefail

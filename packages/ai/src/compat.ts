@@ -20,6 +20,7 @@ export * from "./api/openai-codex-responses.lazy.ts";
 export * from "./api/openai-completions.lazy.ts";
 export * from "./api/openai-responses.lazy.ts";
 export * from "./api/pi-messages.lazy.ts";
+export * from "./api/typesafe-system-one.lazy.ts";
 export * from "./env-api-keys.ts";
 export * from "./image-models.ts";
 export * from "./images.ts";

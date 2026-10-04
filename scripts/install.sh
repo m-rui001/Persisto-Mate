@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Install MATE (mate) into a user-level directory and put it on PATH. No sudo needed.
-# Usage: curl -fsSL https://raw.githubusercontent.com/m-rui001/MATE/main/scripts/install.sh | bash
+# Install Persisto Mate (mate) into a user-level directory and put it on PATH. No sudo needed.
+# Usage: curl -fsSL https://raw.githubusercontent.com/m-rui001/Persisto-Mate/main/scripts/install.sh | bash
 set -euo pipefail
 
-REPO="m-rui001/MATE"
+REPO="m-rui001/Persisto-Mate"
 
 os="$(uname -s)"
 arch="$(uname -m)"

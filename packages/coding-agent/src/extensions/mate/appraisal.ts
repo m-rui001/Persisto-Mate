@@ -13,15 +13,15 @@
  * The replacement is not a small classifier either. Fine-tuned BERT-scale models land near 0.5 macro
  * F1 on 27-label emotion tasks — a coin flip on any one message — and would add a native runtime plus
  * model assets to a companion that already contains a far better reader of the same sentence. So affect
- * here is REPORTED, never guessed: the model's `feel` tool (feel-tool.ts) is the only path into an
- * event's `activations`, and this module keeps the two things that are genuinely cheap and genuinely
- * non-affective — what the message is trying to get (intent), and how hard it pulls for an answer
- * (weight).
+ * is REPORTED, never guessed: the only path into an event's `activations` is the affect judge
+ * (judge-run.ts), which reads the exchange from outside after it happened. This module keeps the two
+ * things that are genuinely cheap and genuinely non-affective — what the message is trying to get
+ * (intent), and how hard it pulls for an answer (weight).
  */
 
-/** Question / request markers. CJK needs no word boundaries. 吗 at the end is a genuine question
- *  particle; 呢 is not (it常作陈述语气), so only 呢 with a question mark counts, and that already
- *  matches via the ？ rule. */
+/** Question / request markers. CJK needs no word boundaries; 吗 at the end is a genuine question
+ *  particle, 呢 usually is not (it reads as a statement particle), so 呢 is matched only with a
+ *  question mark — which the ？ rule already covers. */
 const QUESTION_RE =
 	/\?\s*$|？\s*$|吗[？?]?\s*$|\b(why|what|how|when|where|who|can you|could you|would you|please)\b|为什么|怎么|如何|什么|哪里|谁|能不能|可不可以|可以吗|行吗|好吗|是不是|有没有|请问|帮我|麻烦/i;
 
@@ -46,7 +46,7 @@ export function appraise(text: string): AppraisalResult {
 	if (QUESTION_RE.test(text)) intent = "question";
 	if (TASK_RE.test(text)) intent = "task";
 
-	// Anything that asks for something pulls a little harder than chatter; a message that moves the
-	// companion's actual mood is one the model reports through `feel`.
+	// Anything that asks for something pulls a little harder than chatter; what the message did to the
+	// companion's mood is the judge's reading, taken after the exchange (see judge-run.ts).
 	return { intent, weight: intent === "chat" ? 0 : 0.2 };
 }

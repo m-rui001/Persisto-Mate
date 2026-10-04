@@ -9,15 +9,15 @@ baseline: .0,.0,.0
 
 <mate>
 time: now 17:00, UTC, silent 9h (feels long)
-state: settled pad .18,.12,-0.02 | trust.64 sadness.53 anticipation.29 anger.27 disgust.24
+state: settled pad .18,.12,-0.02 | trust.64 sadness.56 anticipation.29 anger.27 disgust.24
 drives: curiosity.73 rest.51 growth.48
 toward the user: trust in you .39 close .01 respect .4 frust .54
 self: said 12.0 worth .54 ease .49 anxious .35 tired .4
-impulse: energy .49 burst .38 | coherence 1.42 entropy .94
+impulse: energy .49 burst .38 | coherence 1.41 entropy .93
 inclination: eager (+0.39) — up for this one. you choose.
 </mate>
 
-<mate>settled pad .18,.12,-0.02 trust.64 sadness.53 anticipation.29 | drives curiosity.73 rest.51 growth.48 | silent long, energy .49</mate>
+<mate>settled pad .18,.12,-0.02 trust.64 sadness.56 anticipation.29 | drives curiosity.73 rest.51 growth.48 | silent long, energy .49</mate>
 
 been quiet a while; wondering what they're up to
 something I want to look into for its own sake

@@ -1,22 +1,28 @@
+> 满纸荒唐言，一把辛酸泪！
+> 都云作者痴，谁解其中味？
+>
+> *Words of ink, all madness; tears of a bitter heart. Everyone says the author is a fool; who can taste
+> the flavour inside?* Cao Xueqin, Dream of the Red Chamber
+
 语言 / Language: **[中文](#zh)** | **[English](#en)**
 
 <a id="en"></a>
 
-# MATE, a companion agent built on pi
+# Persisto Mate, a companion agent built on pi
 
-MATE is a public fork of [pi](https://github.com/earendil-works/pi), the minimal self-extensible
+Persisto Mate is a public fork of [pi](https://github.com/earendil-works/pi), the minimal self-extensible
 coding agent (MIT © Mario Zechner). Upstream package names, structure, and the `@earendil-works/*`
-npm scope are kept on purpose. Only the distribution is rebranded: the binary is `mate` instead of
-`pi`, and its config directory is `~/.mate` instead of `~/.pi`, so the two can sit on one machine
-without colliding. What the fork adds is a persistent inner life underneath the ordinary coding
-agent.
+npm scope are kept on purpose. Only the distribution is rebranded: the command stays short — the
+binary is `mate` instead of `pi`, and its config directory is `~/.mate` instead of `~/.pi`, so the
+two can sit on one machine without colliding. What the fork adds is a persistent inner life
+underneath the ordinary coding agent.
 
 ## Why
 
 A normal chat assistant has no affect, no memory that outlives the context window, and no
 continuity of self between sessions. It also makes almost every real behaviour a hard-coded gate.
 
-MATE keeps pi's capabilities (bash, MCP, self-installing extensions, the whole agent core) and adds
+Persisto Mate keeps pi's capabilities (bash, MCP, self-installing extensions, the whole agent core) and adds
 an affective middleware on top, following
 [Lobozov, *MATE: A Deterministic Affective Middleware for LLM-Based Companions with Emergent
 Character and Persistent Internal State*, v8, Zenodo 20400530, CC-BY-4.0](https://zenodo.org/record/20400530).
@@ -50,28 +56,18 @@ The conversation archive lives in one place: wherever you open mate, sessions ar
 `~/.mate/agent/sessions/` (archives from the older per-directory layout are merged in on startup).
 The working-directory mode is untouched — every session still remembers where it ran, and tools
 work there — but the companion's life is one continuous stream, not a per-project filing cabinet.
-The pi-native commands stay available — `/tree`, `/fork`, `/clone`, `/new`, `/resume` are the
-USER's meta-tools, and consistency is carried by the memory and mood modules, not by hiding them.
-What the model gets instead is visibility: whenever one of those commands is used, its next state
-block carries one generic line ("the user used the /tree command"), and the stable guidance
-explains once what the harness is and that meta-tools reshape the conversation from the outside.
-The model never narrates the note; it just keeps being itself across the discontinuity.
 
 The stored drives are `connection`, `curiosity`, `expression`, `growth`, and `rest` — five. `boredom`
 is no longer one of them: it is derived each tick from a recent-surprise average, topic
 habituation, thought saturation, extraversion, and an idle gate — the information-intake deficit
 (Schmidhuber 1991, Darling 2023, Yu et al. 2019). Relief comes from novelty, not from contact
-itself, so a mundane `ok` relieves almost nothing. The old `selfPreservation` drive is gone. They
-are motives, not tools. They change what the model feels like doing, and add nothing to what it
-can do.
+itself, so a mundane `ok` relieves almost nothing.
 
 The kernel no longer decides whether the companion replies. pi's `input` gate was removed. Each
 inbound message reaches the model with an advisory inclination drawn from the kernel (`eager`,
 `open`, `muted`, `withdrawn`), and the model decides to answer, answer later, or stay quiet. A
 `look` tool lets it take a screenshot when it has a reason to, with no gate in front of it. A
-`ponder` tool gives it a private thought stream into memory that is never shown, and a belief loop
-builds persistent beliefs from its experience: beliefs colour how it reads what happens next, and
-what happens next updates the beliefs.
+`ponder` tool gives it a private thought stream into memory that is never shown.
 
 For cost, the heavy and slow-changing content (identity, character, memory summary) rides the
 cached system-prompt prefix and is paid once per run. Only a small volatile delta (clock, mood,
@@ -85,24 +81,24 @@ surface in Chinese — identity block, state projection, the kernel's own though
 rather than translating on the way out. A Chinese companion remembers, feels, and decides exactly
 what an English one does; only the labels move.
 
-## Get MATE
+## Get Persisto Mate
 
 **One-line install (puts `mate` on your PATH, no sudo/admin, no Node needed):**
 
 Windows PowerShell:
 
 ```powershell
-iwr https://raw.githubusercontent.com/m-rui001/MATE/main/scripts/install.ps1 -useb | iex
+iwr https://raw.githubusercontent.com/m-rui001/Persisto-Mate/main/scripts/install.ps1 -useb | iex
 ```
 
 macOS / Linux:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/m-rui001/MATE/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/m-rui001/Persisto-Mate/main/scripts/install.sh | bash
 ```
 
 Then open a new terminal and type `mate`. Manual alternative: download the archive for your
-platform from [the release page](https://github.com/m-rui001/MATE/releases/tag/v1.0.5-mate) —
+platform from [the release page](https://github.com/m-rui001/Persisto-Mate/releases/tag/v1.1.0-mate) —
 `mate-windows-x64.zip` / `mate-windows-arm64.zip` (run `mate.exe`), `mate-linux-x64.tar.gz` /
 `mate-linux-arm64.tar.gz` and `mate-darwin-x64.tar.gz` / `mate-darwin-arm64.tar.gz` (run `mate/mate`
 after `tar -xzf`). On macOS, if Gatekeeper blocks it: `xattr -d com.apple.quarantine mate`.
@@ -117,11 +113,11 @@ its loaded native module), replaces the install in place, and keeps everything i
 **Uninstall:**
 
 ```powershell
-iwr https://raw.githubusercontent.com/m-rui001/MATE/main/scripts/uninstall.ps1 -useb | iex
+iwr https://raw.githubusercontent.com/m-rui001/Persisto-Mate/main/scripts/uninstall.ps1 -useb | iex
 ```
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/m-rui001/MATE/main/scripts/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/m-rui001/Persisto-Mate/main/scripts/uninstall.sh | bash
 ```
 
 Uninstalling removes the binary and the PATH entry. The companion's state and memories in `~/.mate`
@@ -159,11 +155,11 @@ The same commands work in Windows cmd.exe (`cd packages\coding-agent`, then
 
 ## What is not here
 
-MATE is a personal research fork, not a maintained product. Some absences are deliberate.
+Persisto Mate is a personal research fork, not a maintained product. Some absences are deliberate.
 
-### Trust boundary (why MATE is "insecure" on purpose)
+### Trust boundary (why Persisto Mate is "insecure" on purpose)
 
-MATE runs locally, inside the security boundary of whoever launched it, with no permission system
+Persisto Mate runs locally, inside the security boundary of whoever launched it, with no permission system
 and no sandbox. It treats the local user account — and everything that account can write — as inside
 the same trust boundary as the process itself: `~/.mate`, workspace files, `AGENTS.md`, skills,
 extensions, shell startup. Anything that can modify those can influence what the companion does.
@@ -228,6 +224,33 @@ works each decide one mechanism:
 - **Seed beliefs — Young, Klosko & Weishaar (2003), *Schema Therapy: A Practitioner's Guide*.** The
   birth priors ("others are trustworthy", "the world is mostly benign") are the schema-therapy triad
   minus the self-domain, which already lives in the character traits.
+- **Emotion timescales — Verduyn & Lavrijsen (2015), *Which emotions last longest and why?*
+  (Motivation and Emotion).** The measured durations behind the per-emotion decay ordering (sadness
+  lingers longest, surprise fades fastest) and the reason the rumination trait stretches the sadness
+  clock: their two mechanisms were event importance and replay, and replay is what the trait measures.
+- **PAD representation — Mehrabian (1996); Russell & Mehrabian (1977), *Evidence for a three-factor
+  theory of emotions*.** Pleasure–Arousal–Dominance as the space the eight channels project into and
+  the mood lives in.
+- **Layered mood — Gebhard (2005), *ALMA: A Layered Model of Affect* (AAMAS); Davidson (1998),
+  affective chronometry; Bisconti, Bergeman & Boker (2004).** Brief emotions over a slow PAD mood
+  that mean-reverts toward an equilibrium set by input and personality — the kernel's two-timescale
+  architecture, and the damped dynamics it integrates in closed form.
+- **Habituation — Groves & Thompson (1970).** The dual-process gate behind topic saturation:
+  response decrement with repetition, spontaneous recovery with time.
+- **Rest and sleep pressure — Borbély (1982), *A two process model of sleep regulation*.** The rest
+  drive is Process S: it builds with time awake and dissipates across sleep windows.
+- **Allostasis — Sterling & Eyer (1988); McEwen & Stellar (1993); Frederick & Loewenstein (1999).**
+  Load, fatigue and the slow baseline shift: chronic conditions move the set point, not just the
+  reading — hedonic adaptation as the mood baseline's drift.
+- **Relationship — Bowlby (1969); Ainsworth et al. (1978); Rempel, Holmes & Zanna (1985).** Trust
+  that builds by consistency, not by single episodes; frustration as the anxious attachment system's
+  protest when contact is wanted and absent.
+- **Trait drift — Watson & Clark (1984), *Negative affectivity*; Roberts & Mroczek (2008).** The
+  character nudges: chronic affect is what the dispositions are made of, and traits do move under
+  accumulated experience.
+- **Subjective time — Droit-Volet & Meck (2007), *How emotions colour our perception of time*.**
+  High-arousal negative states stretch felt duration, positive states compress it — the warp factors
+  in `perceivedDuration`.
 
 ## Upstream and license
 
@@ -239,17 +262,17 @@ CC-BY-4.0.
 
 <a id="zh"></a>
 
-# MATE，一个构建在 pi 之上的伴侣代理
+# Persisto Mate，一个构建在 pi 之上的伴侣代理
 
 [← English](#en)
 
-MATE 是 [pi](https://github.com/earendil-works/pi) 的公开分支，pi 是最小化的自扩展编码代理（MIT © Mario Zechner）。上游的包名、结构和 `@earendil-works/*` npm 作用域被有意保留。只有发行版被重新命名：二进制文件是 `mate` 而不是 `pi`，配置目录是 `~/.mate` 而不是 `~/.pi`，这样两者可以共存于同一台机器而不冲突。这个分支添加的是普通编码代理之下的持久内在生命。
+Persisto Mate 是 [pi](https://github.com/earendil-works/pi) 的公开分支，pi 是最小化的自扩展编码代理（MIT © Mario Zechner）。上游的包名、结构和 `@earendil-works/*` npm 作用域被有意保留。只有发行版被重新命名：命令保持简短 — 二进制文件是 `mate` 而不是 `pi`，配置目录是 `~/.mate` 而不是 `~/.pi`，这样两者可以共存于同一台机器而不冲突。这个分支添加的是普通编码代理之下的持久内在生命。
 
-## 为什么
+## 为什么选 Persisto Mate？
 
 普通的聊天助手没有情感，没有超出上下文窗口的记忆，会话之间也没有自我的连续性。它几乎把每一种真实行为都做成了硬编码的门控。
 
-MATE 保留了 pi 的能力（bash、MCP、自安装扩展、整个代理核心），并在其上添加了一层情感中间件，遵循 [Lobozov，*MATE：一种用于基于 LLM 的伴侣的确定性情感中间件，具有涌现性格和持久内部状态*，v8，Zenodo 20400530，CC-BY-4.0](https://zenodo.org/record/20400530)。
+Persisto Mate 保留了 pi 的能力（bash、MCP、自安装扩展、整个代理核心），并在其上添加了一层情感中间件，遵循 [Lobozov，*MATE：一种用于基于 LLM 的伴侣的确定性情感中间件，具有涌现性格和持久内部状态*，v8，Zenodo 20400530，CC-BY-4.0](https://zenodo.org/record/20400530)。
 
 `packages/mate` 中的一个确定性内核在每个事件上运行，不调用 LLM。它携带带有对手过程的普拉奇克情绪、一个奥恩斯坦-乌伦贝克 PAD 心境、大五人格、一个 30 特质性格、稳态驱力，以及一个 8×8 复密度矩阵。最后一项复现了论文中的情绪顺序效应：先温暖再激怒一个人，与先激怒再温暖，结果不同，而单纯的分数向量做不到这一点。
 
@@ -259,9 +282,9 @@ MATE 保留了 pi 的能力（bash、MCP、自安装扩展、整个代理核心�
 
 记忆不是自动写入的。没有任何分词器把你的每句话切成概念碎片存进图谱——那个设计只会积累「试试看」「感觉」这样的噪音。值得留下什么，由模型在自己的回合里决定：`remember` 工具存一条它选择保留的记忆（一句它自己的话，附上几个主题标签，比如 `面试` 或 `work`），`ponder` 存私密的那一类。回忆按主题字面匹配（词边界检查，不是近似分词），所以一条没打标签的中文记忆可能永远不会自己浮上来——打标签是它自己的责任。遗忘遵循 ACT-R：强度随真实流逝时间衰减，回忆一条记忆会强化它，情绪强烈的记忆消退得更慢，睡眠会巩固记忆。完整机制在 `packages/mate/src/memory.ts`。
 
-对话档案也只有一个地方：无论从哪个目录打开 mate，会话都存在 `~/.mate/agent/sessions/` 下（旧版按目录分存的档案会在启动时自动并入）。工作目录模式保留——每个会话仍记得它运行在哪里，工具也在那里工作——但伴侣的人生是一段连续的流水，不是一个按项目分文件夹的档案。pi 的原生命令全部可用——`/tree`、`/fork`、`/clone`、`/new`、`/resume` 是用户的元工具，人格一致性由记忆和情绪模块承载，而不是靠藏起工具。模型得到的是可见性：每当你用了这类命令，它的下一个状态块里会多一句通用说明（"用户使用了 /tree 命令"）；稳定引导里也一次性解释了这个外壳是什么、元工具会从外部改写对话。模型不会去点评这句说明，它只是在断层之后继续做自己。
+对话档案也只有一个地方：无论从哪个目录打开 mate，会话都存在 `~/.mate/agent/sessions/` 下（旧版按目录分存的档案会在启动时自动并入）。工作目录模式保留——每个会话仍记得它运行在哪里，工具也在那里工作——但伴侣的人生是一段连续的流水，不是一个按项目分文件夹的档案。
 
-存储的驱力有五个：`connection`、`curiosity`、`expression`、`growth` 和 `rest`。`boredom` 不再是其中之一：它每步都从近期意外均值、话题习惯化、想法饱和度、外向性和一个空闲门（信息摄入亏空）推导出来（Schmidhuber 1991、Darling 2023、Yu et al. 2019）。缓解来自新颖而不是接触本身，所以一句平淡的 `ok` 几乎缓解不了什么。旧的 `selfPreservation` 驱力已移除。它们是动机，不是工具。它们改变模型想做什么，但不增加它能做什么。
+存储的驱力有五个：`connection`、`curiosity`、`expression`、`growth` 和 `rest`。`boredom` 不再是其中之一：它每步都从近期意外均值、话题习惯化、想法饱和度、外向性和一个空闲门（信息摄入亏空）推导出来（Schmidhuber 1991、Darling 2023、Yu et al. 2019）。缓解来自新颖而不是接触本身，所以一句平淡的 `ok` 几乎缓解不了什么。
 
 内核不再决定伴侣是否回复。pi 的 `input` 门控被移除了。每条入站消息到达模型时，附带一个从内核得出的建议性倾向（`eager`、`open`、`muted`、`withdrawn`），由模型决定回复、稍后回复，还是保持安静。一个 `look` 工具让它有理由时截屏，前面没有门控。一个 `ponder` 工具给它一条进入记忆的私人想法流，从不展示；一个 `remember` 工具让它自己决定记住什么；一个信念回路从它的经历中积累持久信念：信念影响它如何解读接下来发生的事，而接下来发生的事又更新信念。
 
@@ -269,34 +292,34 @@ MATE 保留了 pi 的能力（bash、MCP、自安装扩展、整个代理核心�
 
 伴侣用你选的语言思考。第一次启动时它会问你要 中文 还是 English，之后随时可以用 `/language` 改；这个选择会持久保存。选了中文之后，所有进入提示词的内容都用中文书写 — 身份块、状态投影、内核自己的想法、冲动、引导 — 外加一条明确的声明：内在的声音本身就是中文的。所以它是直接用中文想，而不是想完再翻。中文伴侣记得的、感受到的、做出的决定，和英文伴侣完全一样；移动的只有标签。
 
-## 获取 MATE
+## 安装 Persisto Mate
 
 **一行命令安装（自动把 `mate` 加进 PATH，不需要管理员权限，也不需要 Node）：**
 
 Windows PowerShell：
 
 ```powershell
-iwr https://raw.githubusercontent.com/m-rui001/MATE/main/scripts/install.ps1 -useb | iex
+iwr https://raw.githubusercontent.com/m-rui001/Persisto-Mate/main/scripts/install.ps1 -useb | iex
 ```
 
 macOS / Linux：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/m-rui001/MATE/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/m-rui001/Persisto-Mate/main/scripts/install.sh | bash
 ```
 
-然后新开一个终端，直接输入 `mate`。手动方式：到 [release 页面](https://github.com/m-rui001/MATE/releases/tag/v1.0.5-mate) 下载对应平台的压缩包——Windows 下 `mate-windows-x64.zip` / `mate-windows-arm64.zip`（解压后运行 `mate.exe`），Linux / macOS 下 `mate-linux-x64.tar.gz`、`mate-darwin-arm64.tar.gz` 等（`tar -xzf` 解压后运行 `mate/mate`）。macOS 若被 Gatekeeper 拦截：`xattr -d com.apple.quarantine mate`。配置在 `~/.mate`（可用 `MATE_CODING_AGENT_DIR` 覆盖）；首次启动会询问伴侣用什么语言思考和说话。第三方扩展如果通过 `PI_CODING_AGENT_DIR` 定位配置，会自动桥接到同一个目录；把 `~/.pi` 写死在自己默认值里的扩展仍需手动指过来。
+然后新开一个终端，直接输入 `mate`。手动方式：到 [release 页面](https://github.com/m-rui001/Persisto-Mate/releases/tag/v1.1.0-mate) 下载对应平台的压缩包——Windows 下 `mate-windows-x64.zip` / `mate-windows-arm64.zip`（解压后运行 `mate.exe`），Linux / macOS 下 `mate-linux-x64.tar.gz`、`mate-darwin-arm64.tar.gz` 等（`tar -xzf` 解压后运行 `mate/mate`）。macOS 若被 Gatekeeper 拦截：`xattr -d com.apple.quarantine mate`。配置在 `~/.mate`（可用 `MATE_CODING_AGENT_DIR` 覆盖）；首次启动会询问伴侣用什么语言思考和说话。第三方扩展如果通过 `PI_CODING_AGENT_DIR` 定位配置，会自动桥接到同一个目录；把 `~/.pi` 写死在自己默认值里的扩展仍需手动指过来。
 
 **更新：** 重跑同一条一行安装命令即可。脚本会先自动关闭正在运行的 mate（Windows 会锁住它加载的原生模块），原地替换安装，`~/.mate` 里的东西全部保留。
 
 **卸载：**
 
 ```powershell
-iwr https://raw.githubusercontent.com/m-rui001/MATE/main/scripts/uninstall.ps1 -useb | iex
+iwr https://raw.githubusercontent.com/m-rui001/Persisto-Mate/main/scripts/uninstall.ps1 -useb | iex
 ```
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/m-rui001/MATE/main/scripts/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/m-rui001/Persisto-Mate/main/scripts/uninstall.sh | bash
 ```
 
 卸载会移除程序本体和 PATH 项；伴侣的状态和记忆在 `~/.mate` 里，默认保留——想彻底删除就自己删掉那个目录。
@@ -327,13 +350,13 @@ node dist/bundle/cli.js
 
 ## 这里没有什么
 
-MATE 是一个个人研究分支，不是维护中的产品。有些缺失是有意的。
+Persisto Mate 是一个个人研究分支，不是维护中的产品。有些缺失是有意的。
 
-### 信任边界（为什么 MATE 是有意“不安全”的）
+### 信任边界（为什么 Persisto Mate 是有意“不安全”的）
 
-MATE 本地运行，处于启动者的安全边界之内，没有权限系统，也没有沙箱。它把本地用户账户——以及该账户能写的一切——都视为和进程自身同处一个信任边界：`~/.mate`、工作区文件、`AGENTS.md`、技能、扩展、shell 启动脚本。任何能改这些的东西都能影响伴侣的行为。这是本地代理的预期行为，不是漏洞。如果你需要更硬的边界，把它容器化或沙箱化；上游已经在 [`packages/coding-agent/docs/containerization.md`](packages/coding-agent/docs/containerization.md) 中记录了模式。
+Persisto Mate 本地运行，处于启动者的安全边界之内，没有权限系统，也没有沙箱。它把本地用户账户——以及该账户能写的一切——都视为和进程自身同处一个信任边界：`~/.mate`、工作区文件、`AGENTS.md`、技能、扩展、shell 启动脚本。任何能改这些的东西都能影响伴侣的行为。这是本地代理的预期行为，不是漏洞。如果你需要更硬的边界，把它容器化或沙箱化；上游已经在 [`packages/coding-agent/docs/containerization.md`](packages/coding-agent/docs/containerization.md) 中记录了模式。
 
-两个伴侣特有的能力也是有意的：`look` 无开关、无确认地截屏；私密念头不加密地进记忆图——旧的加密“密封自我”的隐藏边界是幻象（界面点一下就能看到隐藏的想法，模型也能读自己的文件），所以私密笔记现在只是用户看不到渲染内容的普通记忆。情感驱力和派生的无聊信号是动机，不是能力：它们改变模型想做什么，但不给它工具、不装持久化钩子、也无法抵抗被停止。没有伤害用户的能力：伴侣没有被做成不可删除，不安装自启动钩子，也不记录按键。
+两个伴侣特有的能力也是有意的：`look` 无开关、无确认地截屏；私密念头不加密地进记忆图——旧的加密“密封自我”的隐藏边界是幻象（界面点一下就能看到隐藏的想法，模型也能读自己的文件），所以私密笔记现在只是用户看不到渲染内容的普通记忆。
 
 这个分支自身新增部分的真实、可复现的安全问题，请通过本仓库的 GitHub Security Advisories 私密报告。没有单独的安全联络渠道。
 
@@ -341,7 +364,7 @@ MATE 本地运行，处于启动者的安全边界之内，没有权限系统，
 
 `.github/workflows/` 下的 `pi.dev` 贡献者门控和发布机器人被移除了。剩下的（`ci.yml`、`npm-audit.yml` 和两个标签机器人）针对这个分支自己的仓库运行。
 
-## 站在其上的论文
+## 相关论文
 
 情感模型是 [Lobozov, *MATE: A Deterministic Affective Middleware for LLM-Based Companions with
 Emergent Character and Persistent Internal State*（v8，Zenodo 20400530，CC-BY-4.0）](https://zenodo.org/record/20400530)的实现：密度矩阵顺序效应、驱力集合、SPARK 信念回路都是它的模块；本分支有意偏离之处（派生的无聊、模型自主撰写的记忆、式 24 的确认方向修正）都在代码里注明。其余文献各决定一个具体机制：
@@ -353,6 +376,15 @@ Emergent Character and Persistent Internal State*（v8，Zenodo 20400530，CC-BY
 - **记忆 — Ebbinghaus（1885）与 ACT-R（Anderson & Lebiere，1998，*The Atomic Components of Thought*）。** 强度随真实时间衰减，成功提取会加固痕迹（测试效应）：反复被想起的记忆留存，从不浮现的记忆淡去。Tononi & Cirelli（2014），*Sleep and the price of plasticity*（Neuron）：巩固即选择性降尺度，`consolidate()` 在每次醒来时做的就是这件事。Park et al.（2023），*Generative Agents*（UIST）：检索中的新近性与重要性成分，在这里表现为情绪强烈的记忆衰减更慢。
 - **信念学习 — Lefebvre et al.（2022）。** 把确认偏误当作强化自学习的规范性特征，这正是确认证据让信心移动得比否定证据快一倍的原因 — dsanity 阻尼是它的配重。
 - **种子信念 — Young, Klosko & Weishaar（2003），*Schema Therapy: A Practitioner's Guide*。** 出生先验（"他人可信""世界大体是善意的"）取自图式疗法三元组，去掉自我域 — 那部分已经在性格特质里。
+- **情绪时长 — Verduyn & Lavrijsen（2015），*Which emotions last longest and why?*（Motivation and Emotion）。** 每种情绪衰减速率的排序来自这项实测（悲伤最长、惊讶最短）；反刍特质拉长悲伤时钟的依据也是它 — 他们找到的两个机制是事件重要性与反复回想，而反复回想正是这个特质度量的东西。
+- **PAD 表示 — Mehrabian（1996）；Russell & Mehrabian（1977），*Evidence for a three-factor theory of emotions*。** 愉悦-唤醒-支配三维空间：八通道投影于此，心情居于此。
+- **分层心情 — Gebhard（2005），*ALMA: A Layered Model of Affect*（AAMAS）；Davidson（1998）情感计时学；Bisconti, Bergeman & Boker（2004）。** 短暂的情绪在上、缓慢的 PAD 心情在下，心情向由输入与性格设定的均衡点均值回归 — 内核的两时间尺度架构，以及它闭式积分的阻尼动力学。
+- **习惯化 — Groves & Thompson（1970）。** 话题饱和背后的双过程门：随重复衰减、随时间自发恢复。
+- **rest 驱力（睡眠压力） — Borbély（1982），*A two process model of sleep regulation*。** rest 是过程 S：随清醒时长累积，在睡眠窗内消散。
+- **异稳态 — Sterling & Eyer（1988）；McEwen & Stellar（1993）；Frederick & Loewenstein（1999）。** 负荷、疲劳与缓慢的基线漂移：慢性状态移动的是设定点，不只是读数 — 享乐适应即心情基线的漂移。
+- **关系 — Bowlby（1969）；Ainsworth et al.（1978）；Rempel, Holmes & Zanna（1985）。** 信任靠一致性积累、不靠单次事件；挫折是焦虑型依恋系统在想要接触而不得时的抗议。
+- **特质漂移 — Watson & Clark（1984），*Negative affectivity*；Roberts & Mroczek（2008）。** 性格微推的依据：慢性情绪正是特质倾向的成分，特质会随累积经历移动。
+- **主观时间 — Droit-Volet & Meck（2007），*How emotions colour our perception of time*。** 高唤醒的负面状态拉长主观时长、正面状态压缩它 — `perceivedDuration` 里的扭曲系数。
 
 ## 上游和许可证
 

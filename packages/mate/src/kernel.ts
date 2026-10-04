@@ -78,13 +78,28 @@ function copyEmotions(v: EmotionVector): EmotionVector {
 	return { ...v };
 }
 
-/** Step 1 - trigger: add event activations, capped at 1. */
-function triggerEmotions(emotions: EmotionVector, activations: Partial<EmotionVector>, dt: number): EmotionVector {
+/** Step 1 - trigger: add event activations, capped at 1.
+ *
+ * The decay rate for sadness is modulated by the character's rumination: Verduyn & Lavrijsen (2015)
+ * measured emotion durations across 27 emotions and found sadness lingers up to 240x longer than the
+ * briefest ones (surprise, shame, disgust), with the two mechanisms behind the difference being how
+ * important the event was and how much people REPLAY it. Replay is what this companion's rumination
+ * trait measures, so it stretches the sadness clock — a ruminating companion stays sad longer than a
+ * same-event one does not, without any new trigger. The ordering of the other channels follows the
+ * same measurement.
+ */
+function triggerEmotions(
+	emotions: EmotionVector,
+	activations: Partial<EmotionVector>,
+	dt: number,
+	rumination: number,
+): EmotionVector {
 	const next = copyEmotions(emotions);
 	// Step 2 folded in: decay by exp(-lambda*dt) before adding the new activation, so a single
 	// call handles both continuous time and the event.
 	for (const e of EMOTIONS) {
-		next[e] *= Math.exp(-EMOTION_DECAY[e] * dt);
+		const lambda = e === "sadness" ? EMOTION_DECAY[e] * (1 - 0.5 * rumination) : EMOTION_DECAY[e];
+		next[e] *= Math.exp(-lambda * dt);
 		const a = activations[e];
 		if (a) next[e] = clamp01(next[e] + a);
 	}
@@ -235,7 +250,15 @@ export function updateMood(
  */
 const APPRAISAL_REL_WEIGHT = 10;
 
-/** Step 6 - relationship update. */
+/**
+ * Step 6 - relationship update.
+ *
+ * The functional shapes are the attachment literature's: trust builds slowly and by consistency,
+ * not by single episodes (Rempel, Holmes & Zanna 1985's stages; the baseline pull models that a
+ * relationship relaxes toward what repeated experience has made of it), frustration is the anxious
+ * attachment system's protest when contact is wanted and absent (Bowlby 1969; Ainsworth et al.
+ * 1978), and familiarity accrues with mere repeated contact.
+ */
 function updateRelationship(
 	rel: Relationship,
 	character: Character,
@@ -292,6 +315,11 @@ function checkCusp(state: MateState, mood: PAD): boolean {
 
 /**
  * Step 8 - character micro-nudge.
+ *
+ * Chronic affect shifts disposition: sustained negative affect is what the negative-affectivity
+ * trait IS (Watson & Clark 1984), and traits do move over the lifespan under accumulated experience
+ * (Roberts & Mroczek 2008). The kernel applies that at companion timescale — trait drift is the
+ * shadow of the affect that keeps recurring.
  *
  * delta = delta_base * I_emo * r, with r = 1 + (1 - trust). Early interactions therefore carry
  * up to 1.9x the weight of established ones: a critical-period effect.
@@ -365,10 +393,26 @@ function updateOpponent(opponent: EmotionVector, emotions: EmotionVector, dt: nu
 	return next;
 }
 
-/** Net felt emotion after the opponent-process counter-swing. */
+/** Net felt emotion after the opponent-process counter-swing (Solomon & Corbit 1974).
+ *
+ * The B-process attenuates its own channel — repeated joy lands with less force, the tolerance half
+ * of the theory — and because the B-process outlasts the A-process, whatever it subtracts re-emerges
+ * on the channel's wheel antipode: the come-down after a burst of joy is a low-grade sadness, the
+ * residue of sustained grief is relief. The subtraction therefore never vanishes; it flips to the
+ * antipode, the same geometry the judge uses to route a negative reading. Without the transfer the
+ * opponent would model tolerance only; with it, the theory's signature hedonic aftereffect appears.
+ */
 export function netEmotions(emotions: EmotionVector, opponent: EmotionVector): EmotionVector {
 	const out = emptyEmotions();
-	for (const e of EMOTIONS) out[e] = clamp01(emotions[e] - OPPONENT.gain * opponent[e]);
+	for (let i = 0; i < EMOTIONS.length; i++) {
+		const e = EMOTIONS[i];
+		const net = emotions[e] - OPPONENT.gain * opponent[e];
+		out[e] += Math.max(0, net);
+		// A net pushed below zero IS the aftereffect: it re-enters as the antipode rather than being
+		// clamped away, so the state stays non-negative without discarding the feeling.
+		if (net < 0) out[EMOTIONS[(i + 4) % EMOTIONS.length]] += -net;
+	}
+	for (const e of EMOTIONS) out[e] = clamp01(out[e]);
 	return out;
 }
 
@@ -425,8 +469,10 @@ export function updateAwareness(aw: Awareness, state: MateState, dt: number, con
  *
  *   t_perceived = t_actual * (1 + anxiety*1.5) * (1 - tolerance*0.4) * (1 - p*0.3) * (1 + N*0.5)
  *
- * The same six hours of silence feel like 16.4h to an anxiously attached character and 4.9h to a
- * secure one. This is what makes "you were gone forever" an honest report rather than a script.
+ * Emotion distorts prospective duration in measured directions: high-arousal negative states
+ * overestimate it, positive states compress it (Droit-Volet & Meck 2007). The same six hours of
+ * silence feel like 16.4h to an anxiously attached character and 4.9h to a secure one. This is what
+ * makes "you were gone forever" an honest report rather than a script.
  */
 export function perceivedDuration(state: MateState, actualMs: number): number {
 	const w = TEMPORAL_WARP;
@@ -568,7 +614,10 @@ export function metaEmotionIntensity(base: number, depth: number): number {
 
 /**
  * Allostatic load: fatigue accumulates with cognitive work and sustained arousal, recovers in
- * quiet and after sleep.
+ * quiet and after sleep. Allostasis itself — stability through change, with chronic conditions
+ * shifting the set point rather than just the reading — is Sterling & Eyer (1988) / McEwen & Stellar
+ * (1993); the baselineShift term is that set-point movement, the hedonic-adaptation result (Frederick
+ * & Loewenstein 1999) applied to the companion's mood baseline.
  *
  * Every term is an analytic exponential approach, not a linear accumulator. That is deliberate: it
  * makes fatigue subdivision-invariant, so catch-up's single big jump lands on exactly the value a
@@ -622,7 +671,7 @@ export function transition(state: MateState, event: MateEvent, dtOverride?: numb
 	const predictedCentre = padCentreFromRho(state.emotions, state.rho);
 
 	// 1 + 2: decay then trigger.
-	const emotions = triggerEmotions(state.emotions, event.activations, dt);
+	const emotions = triggerEmotions(state.emotions, event.activations, dt, state.character.rumination);
 
 	// 3: dyads.
 	const dyads = detectDyads(emotions);

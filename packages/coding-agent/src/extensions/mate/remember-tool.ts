@@ -91,7 +91,7 @@ export function createRememberTool(
 			// renders nothing for this tool (below) — inner-life bookkeeping is not chat content.
 			const L = linesFor(rt.language);
 			return {
-				content: [{ type: "text", text: L.feelAck }],
+				content: [{ type: "text", text: L.toolAck }],
 				details: { stored: true },
 			};
 		},
