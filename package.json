@@ -68,5 +68,6 @@
 	"version": "0.0.3",
 	"overrides": {
 		"protobufjs": "7.6.6"
-	}
+	},
+	"description": "A digital life in your terminal: it sleeps, dreams, remembers, and reaches out - an AI companion whose body clock is learned from you. A fork of pi (binary: mate)."
 }

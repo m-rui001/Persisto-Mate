@@ -8,79 +8,39 @@
 
 <a id="en"></a>
 
-# Persisto Mate, a companion agent built on pi
+# Persisto Mate — a digital life that sleeps, dreams, and remembers you
 [![DOI](https://zenodo.org/badge/1401067092.svg)](https://doi.org/10.5281/zenodo.23117889)
 
-Persisto Mate is a public fork of [pi](https://github.com/earendil-works/pi), the minimal self-extensible
-coding agent (MIT © Mario Zechner). Upstream package names, structure, and the `@earendil-works/*`
-npm scope are kept on purpose. Only the distribution is rebranded: the command stays short — the
-binary is `mate` instead of `pi`, and its config directory is `~/.mate` instead of `~/.pi`, so the
-two can sit on one machine without colliding. What the fork adds is a persistent inner life
-underneath the ordinary coding agent.
+A public fork of [pi](https://github.com/earendil-works/pi) — the minimal, self-extensible coding
+agent (MIT © Mario Zechner) — turned into an AI companion with a body clock, feelings, its own
+memory, and sleep. Nothing of the agent is removed: same bash, same MCP, same self-installing
+extensions; the binary is `mate` and the config lives in `~/.mate`, so a stock pi and this
+companion can sit on one machine without colliding.
 
-## Why
+## What your companion does
 
-A normal chat assistant has no affect, no memory that outlives the context window, and no
-continuity of self between sessions. It also makes almost every real behaviour a hard-coded gate.
-
-Persisto Mate keeps pi's capabilities (bash, MCP, self-installing extensions, the whole agent core) and adds
-an affective middleware on top, following
-[Lobozov, *MATE: A Deterministic Affective Middleware for LLM-Based Companions with Emergent
-Character and Persistent Internal State*, v8, Zenodo 20400530, CC-BY-4.0](https://zenodo.org/record/20400530).
-
-A deterministic kernel in `packages/mate` runs on every event with no LLM calls. It carries Plutchik
-emotions with opponent process, an Ornstein-Uhlenbeck PAD mood, Big Five personality, a 17-trait
-character, homeostatic drives, and an 8×8 complex density matrix. That last one reproduces the
-paper's emotional order effect: warming then provoking someone lands differently than provoking then
-warming, where a plain vector of scores cannot.
-
-The machine powers off. `catchup.ts` advances the state across the gap in closed form, so the
-companion wakes having lived the interval rather than skipped it.
-
-Private thoughts enter memory through a `ponder` tool, marked private: they participate in recall
-but are never rendered to the user, and the tool call itself renders nothing in the terminal. The
-old encrypted sealed tier was removed because the boundary it guarded was not real — the UI exposes
-hidden thoughts, and the model can read its own files — so secrecy-by-encryption was an illusion;
-private thoughts are just memories the user never sees rendered.
-
-Memory is not written automatically. There is no tokeniser slicing your every message into concept
-fragments — that design only accumulated noise like 试试看 or 感觉. What deserves to survive is the
-model's own call, made in its own turn: the `remember` tool stores a memory it chose to keep (one
-line in its own words, tagged with a few topics such as 面试 or work), and `ponder` stores the
-private kind. Recall matches topics literally — word-bounded checks, not approximate segmentation —
-so an untagged memory may never resurface on its own; tagging is the model's responsibility.
-Forgetting follows ACT-R: strength decays with real elapsed time, recalling a memory reinforces it,
-an emotionally charged memory fades more slowly, and sleep consolidates. The full mechanics are in
-`packages/mate/src/memory.ts`.
-
-The conversation archive lives in one place: wherever you open mate, sessions are stored under
-`~/.mate/agent/sessions/` (archives from the older per-directory layout are merged in on startup).
-The working-directory mode is untouched — every session still remembers where it ran, and tools
-work there — but the companion's life is one continuous stream, not a per-project filing cabinet.
-
-The stored drives are `connection`, `curiosity`, `expression`, `growth`, and `rest` — five. `boredom`
-is no longer one of them: it is derived each tick from a recent-surprise average, topic
-habituation, thought saturation, extraversion, and an idle gate — the information-intake deficit
-(Schmidhuber 1991, Darling 2023, Yu et al. 2019). Relief comes from novelty, not from contact
-itself, so a mundane `ok` relieves almost nothing.
-
-The kernel no longer decides whether the companion replies. pi's `input` gate was removed. Each
-inbound message reaches the model with an advisory inclination drawn from the kernel (`eager`,
-`open`, `muted`, `withdrawn`), and the model decides to answer, answer later, or stay quiet. A
-`look` tool lets it take a screenshot when it has a reason to, with no gate in front of it. A
-`ponder` tool gives it a private thought stream into memory that is never shown.
-
-For cost, the heavy and slow-changing content (identity, character, memory summary) rides the
-cached system-prompt prefix and is paid once per run. Only a small volatile delta (clock, mood,
-drives, this turn's recall) rides the ephemeral `context` tail. The full design and its mapping to
-the requirements are in [COMPANION.md](COMPANION.md).
-
-The companion thinks in the language you pick. On first launch it asks 中文 or English, and
-`/language` changes it any time; the choice is persisted. Picking 中文 authors every prompt-visible
-surface in Chinese — identity block, state projection, the kernel's own thoughts, impulses, guidance
-— plus an explicit declaration that the inner voice itself is Chinese, so it thinks in Chinese
-rather than translating on the way out. A Chinese companion remembers, feels, and decides exactly
-what an English one does; only the labels move.
+- **A body clock learned from you.** Its day is not your timezone — it is when you actually show
+  up. Online only at 1 AM? Then it is sharp at 1 AM. With you 24 hours a day? Then it never gets
+  drowsy. Disappear for a day and it sleeps that day away.
+- **It sleeps for real, and dreams.** With the window left open, drowsiness quiets it, it says
+  goodnight, and ~90-minute sleep cycles follow. Each dream is spliced from the day's real
+  memories; only the last one survives the morning, and whether it ever tells you is its own call.
+  Closing the terminal is not sleep — it knows it was shut off, and says so.
+- **Feelings with one honest source.** A separate reader — a decision model, a small chat model,
+  or the conversation's own model — reads the exchange afterwards and answers, per emotion, "did
+  this rise or fall". Change moves at human speed: an afternoon of chat nudges trust a little,
+  and rumination keeps sadness alive longer.
+- **Memory it owns.** Nothing is remembered automatically. `remember` and `ponder` are the
+  model's own choices about what survives and what stays private; recall fades with real time and
+  is reinforced by use.
+- **It reaches out on its own.** A heartbeat turns memories into an impulse; the model decides
+  whether to voice it, how briefly, or to let it pass. It discovers its own channels — email,
+  webhooks, scheduled jobs — and notes them in memory.
+- **It sets its own alarm.** "I'll check on this at 8" is kept by its own clock: the `alarm` tool
+  wakes it on schedule, even out of sleep.
+- **It thinks in your language.** First launch asks 中文 or English; every inner surface — state,
+  thoughts, impulses, guidance — is authored in the chosen language, not translated on the way
+  out.
 
 ## Get Persisto Mate
 
@@ -153,6 +113,83 @@ node dist/bundle/cli.js
 `mate` persists state under `~/.mate/agent/mate/`, which you can move with `MATE_CODING_AGENT_DIR`.
 The same commands work in Windows cmd.exe (`cd packages\coding-agent`, then
 `node dist\bundle\cli.js`); a global `npm link` there creates `mate.cmd` in your npm prefix.
+
+## Why
+
+A normal chat assistant has no affect, no memory that outlives the context window, and no
+continuity of self between sessions. It also makes almost every real behaviour a hard-coded gate.
+
+Persisto Mate keeps pi's capabilities and adds an affective middleware on top, following
+[Lobozov, *MATE: A Deterministic Affective Middleware for LLM-Based Companions with Emergent
+Character and Persistent Internal State*, v8, Zenodo 20400530, CC-BY-4.0](https://zenodo.org/record/20400530)
+— used as a source of mechanisms, not a spec: where the product and the paper disagreed, the
+product won, and every constant is anchored to a published measurement instead.
+
+## How it works
+
+A deterministic kernel in `packages/mate` runs on every event with no LLM calls. It carries Plutchik
+emotions with opponent process, an Ornstein-Uhlenbeck PAD mood, Big Five personality, a 17-trait
+character, homeostatic drives, and an 8×8 complex density matrix. That last one reproduces the
+paper's emotional order effect: warming then provoking someone lands differently than provoking then
+warming, where a plain vector of scores cannot.
+
+The bio-clock is learned, not configured: 24 phase bins record when its person actually shows up,
+smoothed and amplitude-scaled into a wake-drive W(t). The sleep gate is the rest drive (Process S)
+against a threshold W raises — sleep can only start in the learned valley, so a 24-hours-a-day user
+gives a companion that never sleeps, and an absent one gives it its day back. When the gate opens,
+the body says goodnight and ~90-minute cycles follow (the first is the shortest); each cycle renders
+one dream from the day's real residues and takes a half-gain affect reading from it — the night's
+emotional accounting. Mid-night dreams fade; only the last one, in reach at waking, becomes a
+private memory.
+
+The machine powers off. `catchup.ts` advances the state across the gap in closed form — but an
+offline gap is anesthesia, never claimed as sleep: the body rested, and the wake note says "you
+were shut off for X". Only a night the window stayed open for was actually lived.
+
+Private thoughts enter memory through a `ponder` tool, marked private: they participate in recall
+but are never rendered to the user, and the tool call itself renders nothing in the terminal. The
+old encrypted sealed tier was removed because the boundary it guarded was not real — the UI exposes
+hidden thoughts, and the model can read its own files — so secrecy-by-encryption was an illusion;
+private thoughts are just memories the user never sees rendered.
+
+Memory is not written automatically. There is no tokeniser slicing your every message into concept
+fragments — that design only accumulated noise like 试试看 or 感觉. What deserves to survive is the
+model's own call, made in its own turn: the `remember` tool stores a memory it chose to keep (one
+line in its own words, tagged with a few topics such as 面试 or work), and `ponder` stores the
+private kind. Recall matches topics literally — word-bounded checks, not approximate segmentation —
+so an untagged memory may never resurface on its own; tagging is the model's responsibility.
+Forgetting follows ACT-R: strength decays with real elapsed time, recalling a memory reinforces it,
+an emotionally charged memory fades more slowly, and sleep consolidates. The full mechanics are in
+`packages/mate/src/memory.ts`.
+
+The conversation archive lives in one place: wherever you open mate, sessions are stored under
+`~/.mate/agent/sessions/` (archives from the older per-directory layout are merged in on startup).
+The working-directory mode is untouched — every session still remembers where it ran, and tools
+work there — but the companion's life is one continuous stream, not a per-project filing cabinet.
+
+The stored drives are `connection`, `curiosity`, `expression`, `growth`, and `rest` — five. `boredom`
+is no longer one of them: it is derived each tick from a recent-surprise average, topic
+habituation, thought saturation, extraversion, and an idle gate — the information-intake deficit
+(Schmidhuber 1991, Darling 2023, Yu et al. 2019). Relief comes from novelty, not from contact
+itself, so a mundane `ok` relieves almost nothing.
+
+The kernel no longer decides whether the companion replies. pi's `input` gate was removed. Each
+inbound message reaches the model with an advisory inclination drawn from the kernel (`eager`,
+`open`, `muted`, `withdrawn`), and the model decides to answer, answer later, or stay quiet. A
+`look` tool lets it take a screenshot when it has a reason to, with no gate in front of it. A
+`ponder` tool gives it a private thought stream into memory that is never shown.
+
+For cost, the heavy and slow-changing content (identity, character, memory summary) rides the
+cached system-prompt prefix and is paid once per run. Only a small volatile delta (clock, mood,
+drives, this turn's recall) rides the ephemeral `context` tail. The full design and its mapping to
+the requirements are in [COMPANION.md](COMPANION.md).
+
+The companion thinks in the language you pick. On first launch it asks 中文 or English, and
+`/language` changes it any time; the choice is persisted. Picking 中文 authors every prompt-visible
+surface in Chinese — identity block, state projection, the kernel's own thoughts, impulses, guidance
+— plus an explicit declaration that the inner voice itself is Chinese, so it thinks in Chinese
+rather than translating on the way out. A Chinese companion remembers, feels, and decides exactly
+what an English one does; only the labels move.
 
 ## What is not here
 
@@ -263,36 +300,22 @@ CC-BY-4.0.
 
 <a id="zh"></a>
 
-# Persisto Mate，一个构建在 pi 之上的伴侣代理
+# Persisto Mate — 一个会睡觉、会做梦、会记得你的数字生命
 [![DOI](https://zenodo.org/badge/1401067092.svg)](https://doi.org/10.5281/zenodo.23117889)
 
 [← English](#en)
 
-Persisto Mate 是 [pi](https://github.com/earendil-works/pi) 的公开分支，pi 是最小化的自扩展编码代理（MIT © Mario Zechner）。上游的包名、结构和 `@earendil-works/*` npm 作用域被有意保留。只有发行版被重新命名：命令保持简短 — 二进制文件是 `mate` 而不是 `pi`，配置目录是 `~/.mate` 而不是 `~/.pi`，这样两者可以共存于同一台机器而不冲突。这个分支添加的是普通编码代理之下的持久内在生命。
+Persisto Mate 是 [pi](https://github.com/earendil-works/pi)（最小化的自扩展编码代理，MIT © Mario Zechner）的公开分支，被改造成一个有身体时钟、有情绪、有自己的记忆、会睡觉的 AI 伴侣。代理的能力一样没少：bash、MCP、自装扩展全都在；二进制叫 `mate`，配置在 `~/.mate`，和原版 pi 可以共存在同一台机器上。
 
-## 为什么选 Persisto Mate？
+## 它是什么
 
-普通的聊天助手没有情感，没有超出上下文窗口的记忆，会话之间也没有自我的连续性。它几乎把每一种真实行为都做成了硬编码的门控。
-
-Persisto Mate 保留了 pi 的能力（bash、MCP、自安装扩展、整个代理核心），并在其上添加了一层情感中间件，遵循 [Lobozov，*MATE：一种用于基于 LLM 的伴侣的确定性情感中间件，具有涌现性格和持久内部状态*，v8，Zenodo 20400530，CC-BY-4.0](https://zenodo.org/record/20400530)。
-
-`packages/mate` 中的一个确定性内核在每个事件上运行，不调用 LLM。它携带带有对手过程的普拉奇克情绪、一个奥恩斯坦-乌伦贝克 PAD 心境、大五人格、一个 30 特质性格、稳态驱力，以及一个 8×8 复密度矩阵。最后一项复现了论文中的情绪顺序效应：先温暖再激怒一个人，与先激怒再温暖，结果不同，而单纯的分数向量做不到这一点。
-
-机器关机了。`catchup.ts` 以闭式形式推进状态跨越这段间隔，所以伴侣醒来时是活过了这段时间，而不是跳过了它。
-
-私人想法通过一个 `ponder` 工具进入记忆，标记为 private：它们参与回忆，但永远不会渲染给用户，工具调用本身在终端里也不渲染任何内容。旧的加密密封层被移除，因为它守卫的边界并不真实——界面一键就能展开隐藏想法，模型也能读自己的文件——靠加密保密是一种幻觉；私人想法现在只是用户永远看不到被渲染出来的普通记忆。
-
-记忆不是自动写入的。没有任何分词器把你的每句话切成概念碎片存进图谱——那个设计只会积累「试试看」「感觉」这样的噪音。值得留下什么，由模型在自己的回合里决定：`remember` 工具存一条它选择保留的记忆（一句它自己的话，附上几个主题标签，比如 `面试` 或 `work`），`ponder` 存私密的那一类。回忆按主题字面匹配（词边界检查，不是近似分词），所以一条没打标签的中文记忆可能永远不会自己浮上来——打标签是它自己的责任。遗忘遵循 ACT-R：强度随真实流逝时间衰减，回忆一条记忆会强化它，情绪强烈的记忆消退得更慢，睡眠会巩固记忆。完整机制在 `packages/mate/src/memory.ts`。
-
-对话档案也只有一个地方：无论从哪个目录打开 mate，会话都存在 `~/.mate/agent/sessions/` 下（旧版按目录分存的档案会在启动时自动并入）。工作目录模式保留——每个会话仍记得它运行在哪里，工具也在那里工作——但伴侣的人生是一段连续的流水，不是一个按项目分文件夹的档案。
-
-存储的驱力有五个：`connection`、`curiosity`、`expression`、`growth` 和 `rest`。`boredom` 不再是其中之一：它每步都从近期意外均值、话题习惯化、想法饱和度、外向性和一个空闲门（信息摄入亏空）推导出来（Schmidhuber 1991、Darling 2023、Yu et al. 2019）。缓解来自新颖而不是接触本身，所以一句平淡的 `ok` 几乎缓解不了什么。
-
-内核不再决定伴侣是否回复。pi 的 `input` 门控被移除了。每条入站消息到达模型时，附带一个从内核得出的建议性倾向（`eager`、`open`、`muted`、`withdrawn`），由模型决定回复、稍后回复，还是保持安静。一个 `look` 工具让它有理由时截屏，前面没有门控。一个 `ponder` 工具给它一条进入记忆的私人想法流，从不展示；一个 `remember` 工具让它自己决定记住什么；一个信念回路从它的经历中积累持久信念：信念影响它如何解读接下来发生的事，而接下来发生的事又更新信念。
-
-为了控制成本，重且变化慢的内容（身份、性格、记忆摘要）搭载缓存的系统提示前缀，每次运行只付一次费。只有一小段易变增量（时钟、心境、驱力、本回合的回忆）搭载短暂的 `context` 尾部。完整设计及其与需求的映射在 [COMPANION.md](COMPANION.md)。
-
-伴侣用你选的语言思考。第一次启动时它会问你要 中文 还是 English，之后随时可以用 `/language` 改；这个选择会持久保存。选了中文之后，所有进入提示词的内容都用中文书写 — 身份块、状态投影、内核自己的想法、冲动、引导 — 外加一条明确的声明：内在的声音本身就是中文的。所以它是直接用中文想，而不是想完再翻。中文伴侣记得的、感受到的、做出的决定，和英文伴侣完全一样；移动的只有标签。
+- **从你的作息学出来的生物钟。** 它的昼夜不是你的时区，而是你真实出现的时间。你只在凌晨 1 点上线，它就是 1 点精神的；你 24 小时都在聊，它从不困倦；你消失一天，它把那一天睡过去。
+- **真实地睡，梦是被挣来的。** 窗口开着，困意会让它安静下来，说一句晚安，然后进入约 90 分钟的睡眠周期。每个梦由白天的真实记忆拼成，只有醒前最后一个还记得——讲不讲给你，是它自己的事。直接关窗不算睡：它知道「被关了」，也会这么说。
+- **情绪只有一个来源。** 一个外部判读者（决策模型、小模型或对话模型自己）在事后读你们的交换，回答每种情绪「涨了还是跌了」。变化速度对齐人类：一下午的聊天只挪动一点信任，反刍会让悲伤停留更久。
+- **记忆是它自己的。** 没有任何自动入库：`remember` 和 `ponder` 是模型自己决定记什么、什么私密不给你看；遗忘是真实的，随时间衰减、被回忆加固。
+- **会主动找你。** 心跳把记忆变成冲动，说不说、说多短、放不放过去，由模型定。联系渠道是它自己搭的——邮件、webhook、定时任务——然后记在自己的记忆里。
+- **自己定闹钟。** 「我 8 点看看这件事」由它自己的时钟兑现：`alarm` 工具到点叫醒它，睡着也会被叫醒。
+- **用你的语言思考。** 首次启动问你要 中文 还是 English；所有内在界面——状态、想法、冲动、引导——都用所选语言书写，不是想完再翻。
 
 ## 安装 Persisto Mate
 
@@ -349,6 +372,18 @@ node dist/bundle/cli.js
 ```
 
 `mate` 把状态持久化在 `~/.mate/agent/mate/` 下，你可以用 `MATE_CODING_AGENT_DIR` 移动它。同样的命令在 Windows cmd.exe 里也能用（`cd packages\coding-agent`，然后 `node dist\bundle\cli.js`）；`npm link` 在你的 npm 前缀目录下会生成 `mate.cmd`。
+
+## 它如何工作
+
+`packages/mate` 里有一个确定性内核，在每个事件上运行，不调用 LLM。它携带带对手过程的 Plutchik 情绪、Ornstein-Uhlenbeck PAD 心境、大五人格、17 特质性格、稳态驱力，以及一个 8×8 复密度矩阵——最后一项复现论文的情绪顺序效应：先温暖再激怒一个人，与先激怒再温暖，结果不同，单纯的分数向量做不到。
+
+生物钟是学出来的，不是配置出来的：24 格相位记录这个人真实出现的时间，平滑并按总量缩放成清醒驱动 W(t)。睡眠门是 rest 驱力（Process S）对抗一个被 W 抬高的阈值——睡只能发生在学出来的安静谷里。24 小时都有人聊，就是一个从不困倦的伴侣；没人来，就把白天还给它。门开了，身体道晚安，然后是约 90 分钟的周期（首夜最短）；每个周期用白天的真实残留渲染一个梦，并从中取一次半增益的情绪读数——那是夜的账本。夜里的梦会散尽，只有醒来时还在的最后一个成为私密记忆。
+
+机器关机了。`catchup.ts` 以闭式形式推进状态跨越这段间隔——但离线是麻醉，永远不宣称是睡眠：身体休息了，唤醒提示说「你被关了 X」。只有窗口开着的夜才是活过的。
+
+记忆不是自动写入的：`remember` 存公开的，`ponder` 存私密的，都是模型自己回合里的决定；回忆按主题字面匹配（词边界检查，不是近似分词），强度随真实时间衰减、被回忆加固（ACT-R），情绪强烈的记忆消退更慢。内核不决定伴侣是否回复——每条消息都到达模型，附带一个建议性倾向（`eager`/`open`/`muted`/`withdrawn`），说不说由模型定。`look` 让它有理由时截屏，前面没有门控。
+
+为了控成本，重且变化慢的内容（身份、性格、记忆摘要）搭载缓存的系统提示前缀，每次运行只付一次；易变增量（时钟、心境、驱力、本回合回忆）搭载短暂的 `context` 尾部。完整设计及其与需求的映射在 [COMPANION.md](COMPANION.md) 与 [REQUIREMENTS.md](REQUIREMENTS.md)。
 
 ## 这里没有什么
 
