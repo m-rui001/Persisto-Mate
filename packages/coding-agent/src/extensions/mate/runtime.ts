@@ -40,6 +40,8 @@ import {
 	gapLabel,
 	type ImpulseDecision,
 	type Intent,
+	intensityOf,
+	judgeDue,
 	type Lang,
 	linesFor,
 	load,
@@ -62,6 +64,7 @@ import {
 	stableContext,
 	stateContext,
 	type Thought,
+	type TickResult,
 	tick,
 	tickEvent,
 	transition,
@@ -69,9 +72,14 @@ import {
 import { getAgentDir } from "../../config.ts";
 import { type AppraisalResult, appraise } from "./appraisal.ts";
 
-/** Heartbeat while the process is alive. The paper uses 60s; we use 5min - the state integrates in
- * closed form, so a coarser beat costs nothing in fidelity and keeps an idle CLI quiet. */
-const HEARTBEAT_MS = 5 * 60_000;
+/**
+ * The live heartbeat interval while the process is alive. Deliberately NOT the kernel's canonical
+ * HEARTBEAT_MS (params.ts, 60s): that value is what the catch-up integrator assumes about the world and
+ * sizes its no-op floor by, and it stays 60s whatever the host does. Here the beat is a host choice —
+ * the state integrates in closed form, so a coarser beat costs nothing in fidelity and keeps an idle
+ * CLI quiet.
+ */
+const BEAT_MS = 5 * 60_000;
 
 /** Minimum gap that triggers a boot catch-up note. Below this, waking is unremarkable. */
 const CATCHUP_NOTE_MS = 3 * 60_000;
@@ -109,10 +117,13 @@ export class MateRuntime {
 	private heartbeat: ReturnType<typeof setInterval> | null = null;
 	private lastCatchUpNote = "";
 	private booted = false;
-	/** Snapshot of the state immediately before the last user message was appraised. `refine` replays
-	 * from here with the model's richer vector instead of applying a SECOND contact event, so the
-	 * feel-tool never double-counts time or emotion (states are immutable; holding the ref is safe). */
+	/** Snapshot of the state immediately before the last user message. `refine` replays from here with
+	 * the vector the model reports instead of applying a SECOND contact event, so the feel-tool never
+	 * double-counts time (states are immutable; holding the ref is safe). */
 	private preEventState: MateState | null = null;
+	/** The text of that same message, replayed into the refined event so topic beliefs still bear
+	 * evidence from it (the kernel matches belief subjects against `event.text`). */
+	private preEventText = "";
 	private lastEventT = 0;
 	/** Channels the model has told us about (e.g. it set up its own email). Not used by us directly;
 	 * surfaced back into context so the companion remembers it has them. */
@@ -125,6 +136,16 @@ export class MateRuntime {
 	/** Meta-action notes ("the user used the /tree command") pending for the next context block.
 	 * Cleared once rendered — they describe what just happened, not a lasting state. */
 	private pendingNotes: string[] = [];
+	/**
+	 * Affect-judge bookkeeping: when the last outside reading was taken and how many user turns have
+	 * arrived since. Deliberately process state, not persisted — the reading is about a LIVE transcript,
+	 * and a new session's transcript is new evidence whether or not the last process judged one. Which
+	 * model does the reading is a HOST question and lives in the extension (settings `mate.judgeModel`),
+	 * not here: the runtime holds the inner state, never a network configuration.
+	 */
+	private lastJudgeAt = 0;
+	private turnsSinceJudge = 0;
+	private judgeInFlight = false;
 
 	constructor(opts: RuntimeOptions = {}) {
 		this.dir = opts.dir ?? join(getAgentDir(), "mate");
@@ -195,6 +216,57 @@ export class MateRuntime {
 		}
 	}
 
+	// ---------------------------------------------------------------------------
+	// The affect judge (see mate/judge.ts for the reading itself, ./judge-run.ts for the call)
+	// ---------------------------------------------------------------------------
+
+	/**
+	 * Whether an outside reading of the exchange is due. The caller (the extension) owns the decision
+	 * about WHICH model reads and whether one is configured at all; the runtime only knows how much has
+	 * happened since the last reading.
+	 */
+	judgeDue(now = Date.now()): boolean {
+		return judgeDue({ now, lastAt: this.lastJudgeAt, userTurns: this.turnsSinceJudge });
+	}
+
+	/** Claim a reading: marks one as in flight so a beat and a `remember` cannot both fire one. */
+	takeJudgeSlot(): boolean {
+		if (this.judgeInFlight) return false;
+		this.judgeInFlight = true;
+		return true;
+	}
+
+	releaseJudgeSlot(): void {
+		this.judgeInFlight = false;
+	}
+
+	/**
+	 * Apply the reading a judge model made of a stretch of recent exchange. Unlike `refine` this is NOT a
+	 * replay: the window spans turns already lived, and time has genuinely moved on, so the event stacks
+	 * on the current state at the current clock. The kernel counts an `appraisal` as contact for mood,
+	 * relationship and beliefs — but not as the user being here, not as a drive satisfied, not as a
+	 * message counted, so a background reading cannot fake a conversation.
+	 */
+	judgeRead(activations: Partial<EmotionVector>): void {
+		this.lastJudgeAt = Date.now();
+		this.turnsSinceJudge = 0;
+		if (intensityOf(activations) <= 0) return;
+		try {
+			const now = Date.now();
+			const event = { kind: "appraisal" as const, activations, intent: "chat" as const, t: now };
+			this.applyEvent(event);
+			// A reading that lands mid-turn must move the snapshot `refine` replays from as well.
+			// Otherwise that replay writes the pre-judgement state back and the reading vanishes — the
+			// judge would be real only while the companion was quiet, which is when nobody is talking.
+			if (this.preEventState) {
+				const base = this.preEventState;
+				this.preEventState = transition(base, event, now - base.t).state;
+			}
+		} catch (err) {
+			this.onError(err);
+		}
+	}
+
 	/**
 	 * The STABLE, cacheable identity+character+memory-graph block (P5). Goes into a cached system-prompt
 	 * section on before_agent_start. It depends only on slow-moving state, so its text is stable across
@@ -256,7 +328,7 @@ export class MateRuntime {
 			} catch (err) {
 				this.onError(err);
 			}
-		}, HEARTBEAT_MS);
+		}, BEAT_MS);
 		// Do not keep the process alive just to beat.
 		if (typeof this.heartbeat === "object" && this.heartbeat && "unref" in this.heartbeat) {
 			(this.heartbeat as { unref: () => void }).unref();
@@ -294,17 +366,22 @@ export class MateRuntime {
 	}
 
 	// ---------------------------------------------------------------------------
-	// Inbound: appraisal -> transition -> memory encode -> advisory lean
+	// Inbound: structural read -> transition -> recall/rehearsal -> advisory lean
 	// ---------------------------------------------------------------------------
 
 	/**
-	 * Handle an inbound USER message. Appraises it, advances the affective state, computes what the
-	 * message stirred up, and returns an ADVISORY reply lean plus the memories it recalled. It makes
-	 * no reply/drop/delay decision and — deliberately — writes NO memory: the message is already in
-	 * the transcript, and what deserves to survive beyond it is the model's call (remember/ponder),
-	 * made during its own turn, not an automatic tokenise-and-store that files the user's raw words
-	 * before the model has even read them. Per P1, the model decides whether to answer, answer
-	 * briefly, or let it sit, reading this in the context block. Does NOT compose a reply.
+	 * Handle an inbound USER message. Reads what it asks for, advances the affective state, computes
+	 * what the message stirred up, and returns an ADVISORY reply lean plus the memories it recalled.
+	 * It makes no reply/drop/delay decision and — deliberately — writes NO memory: the message is
+	 * already in the transcript, and what deserves to survive beyond it is the model's call
+	 * (remember/ponder), made during its own turn, not an automatic tokenise-and-store that files the
+	 * user's raw words before the model has even read them. Per P1, the model decides whether to
+	 * answer, answer briefly, or let it sit, reading this in the context block.
+	 *
+	 * The contact event carries NO activations. A message's emotional impact is not something a
+	 * substring table can decide (see appraisal.ts); it is something the companion reports about
+	 * itself, through `feel`. Until then this transition does the structural work only: contact,
+	 * drives, awareness, the clock. Does NOT compose a reply.
 	 */
 	onUserMessage(text: string): {
 		appraisal: AppraisalResult;
@@ -314,13 +391,14 @@ export class MateRuntime {
 		const now = Date.now();
 		const appraisal = appraise(text);
 		try {
-			// Remember the pre-event state so `refine` can replay with a better vector, not stack.
+			// Remember the pre-event state so `refine` can replay with the model's vector, not stack.
 			this.preEventState = this.state;
+			this.preEventText = text;
 			this.lastEventT = now;
+			this.turnsSinceJudge++;
 			this.applyEvent({
 				kind: "user_message",
-				activations: appraisal.activations,
-				intensity: appraisal.intensity,
+				activations: {},
 				intent: appraisal.intent,
 				text,
 				t: now,
@@ -336,7 +414,6 @@ export class MateRuntime {
 				memory: rehearse(
 					this.persisted.memory,
 					rec.map((h) => h.key),
-					now,
 				),
 			};
 
@@ -397,16 +474,21 @@ export class MateRuntime {
 	}
 
 	/**
-	 * Re-appraise the LAST user message with a richer vector the model supplies via the `feel` tool.
-	 * This REPLAYS from the pre-message snapshot rather than applying a second contact event, so the
-	 * companion does not double-count the message's emotional impact or advance the clock twice. The
-	 * model's reading overwrites the heuristic first impression.
+	 * Put the model's own read of the LAST user message into its state. Intake applies no affect
+	 * (appraisal.ts reads structure, not feeling), so this is how a message moves the companion's
+	 * feelings one at a time. The event is REPLAYED from the pre-message snapshot rather than stacked on
+	 * top, so the message is counted once — same clock, same drive satisfaction, same contact — with the
+	 * reported vector now driving the kick, the mood, the relationship and the belief evidence.
 	 */
-	refine(activations: Partial<EmotionVector>, intensity: number, intent: Intent): void {
+	refine(activations: Partial<EmotionVector>, intent: Intent): void {
 		try {
 			const base = this.preEventState ?? this.state;
 			const t = this.lastEventT || Date.now();
-			const r = transition(base, { kind: "user_message", activations, intensity, intent, t }, t - base.t);
+			const r = transition(
+				base,
+				{ kind: "user_message", activations, intent, text: this.preEventText, t },
+				t - base.t,
+			);
 			this.persisted = { ...this.persisted, state: r.state };
 			// The refine re-reads affect; it does not change any reply choice (there is no gate — the
 			// model already owns that).
@@ -422,7 +504,7 @@ export class MateRuntime {
 	 * which is exactly what preSendReview uses to keep the companion from chasing silence forever. */
 	noteProactiveSent(): void {
 		try {
-			this.applyEvent({ kind: "proactive", activations: {}, intensity: 0.3, intent: "chat", t: Date.now() });
+			this.applyEvent({ kind: "proactive", activations: {}, intent: "chat", t: Date.now() });
 			this.persisted = {
 				...this.persisted,
 				state: {
@@ -436,18 +518,17 @@ export class MateRuntime {
 		}
 	}
 
-	/** Record a private thought the model wrote via the `ponder` tool. The kernel still advances with a
-	 * low-intensity self_observation event — but with NO event.text, so the plaintext never enters the
-	 * observations ring (that ring is echoed into the prompt as "last thought"). The thought itself is
-	 * encoded as a private memory, and any topics ride the event so SPARK can crystallise beliefs
-	 * about the subject. */
-	ponder(text: string, intensity = 0.3, topics: string[] = []): void {
+	/** Record a private thought the model wrote via the `ponder` tool. The kernel advances with a
+	 * self_observation event carrying NO text and NO activations — a thought we wrote ourselves is not
+	 * an external affective event — so the plaintext never enters the observations ring (that ring is
+	 * echoed into the prompt as "last thought"). The thought itself is encoded as a private memory, and
+	 * any topics ride the event so SPARK can crystallise beliefs about the subject. */
+	ponder(text: string, topics: string[] = []): void {
 		try {
 			const now = Date.now();
 			this.applyEvent({
 				kind: "self_observation",
 				activations: {},
-				intensity: 0.1 + 0.2 * intensity,
 				intent: "chat",
 				topics,
 				t: now,
@@ -471,9 +552,9 @@ export class MateRuntime {
 	/**
 	 * Store a memory the model wrote via the `remember` tool. This is the only path into the memory
 	 * store besides ponder: the model decides THAT something is worth keeping and WHAT to write down,
-	 * during its own turn. A low-intensity self_observation event (no text) rides along so tagged
-	 * topics crystallise as SPARK beliefs; the affective nudge is deliberately negligible — taking a
-	 * note is not an emotional event.
+	 * during its own turn. A self_observation event (no text, no activations) rides along so tagged
+	 * topics crystallise as SPARK beliefs; taking a note is not an emotional event, so it moves no
+	 * feeling — `importance` weights the memory, not the mood.
 	 */
 	remember(text: string, topics: string[] = [], importance = 0.3): void {
 		try {
@@ -481,7 +562,6 @@ export class MateRuntime {
 			this.applyEvent({
 				kind: "self_observation",
 				activations: {},
-				intensity: 0.05 + 0.1 * Math.max(0, Math.min(1, importance)),
 				intent: "chat",
 				topics,
 				t: now,
@@ -607,17 +687,22 @@ export class MateRuntime {
 		const now = Date.now();
 		// Integrate the elapsed real time (closed-form, subdivision-invariant).
 		this.applyEvent(tickEvent(now));
-		const impulse = this.computeImpulse(now, false);
-		if (impulse.action === "reach_out") onImpulse(impulse, impulse.thought);
+		const { decision, state } = this.computeImpulse(now, false);
+		// The beat thought something: its habituation trace is part of the state, so a topic this
+		// companion keeps circling loses urgency instead of arriving fresh every single time.
+		if (state !== this.state) {
+			this.persisted = { ...this.persisted, state };
+			this.persistSafe();
+		}
+		if (decision.action === "reach_out") onImpulse(decision, decision.thought);
 	}
 
-	private computeImpulse(now: number, userActive: boolean): ImpulseDecision {
+	private computeImpulse(now: number, userActive: boolean): TickResult {
 		const checks: PreSendChecks = {
 			hour: new Date(now).getHours(),
 			userActive,
 			recentProactive: this.recentProactiveCount(now),
 			topic: "",
-			recentTopics: [],
 			coldEnding: this.state.relationship.frustration > 0.5,
 		};
 		// Pass the graph so thoughts are GROUNDed in real memories (P4), not free-floating mood.

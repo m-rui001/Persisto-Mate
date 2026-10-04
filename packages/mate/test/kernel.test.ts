@@ -19,7 +19,7 @@ function event(t: number, seed: number) {
 	const act = {} as Record<string, number>;
 	for (const e of EMOTIONS)
 		act[e] = ((((Math.sin(seed * 12.9898 + e.length * 78.233) * 43758.5453) % 1) + 1) % 1) * 0.6;
-	return { kind: "user_message" as const, activations: act, intensity: 0.5, intent: "chat" as const, t };
+	return { kind: "user_message" as const, activations: act, intent: "chat" as const, t };
 }
 
 describe("kernel invariants", () => {
@@ -79,7 +79,6 @@ describe("kernel invariants", () => {
 		const hostile = {
 			kind: "user_message" as const,
 			activations: { anger: 1, disgust: 1 },
-			intensity: 1,
 			intent: "chat" as const,
 			t: HOUR,
 		};
@@ -105,7 +104,7 @@ describe("kernel invariants", () => {
 		const s = birth({ seed: 2, born: 0 });
 		const r = transition(
 			s,
-			{ kind: "user_message", activations: { joy: 0.8, trust: 0.8 }, intensity: 1, intent: "chat", t: 1000 },
+			{ kind: "user_message", activations: { joy: 0.8, trust: 0.8 }, intent: "chat", t: 1000 },
 			1000,
 		);
 		expect(r.dyads).toContain("love");
@@ -178,7 +177,7 @@ describe("offline catch-up", () => {
 		// Pump some emotion in to create coherence.
 		s = transition(
 			s,
-			{ kind: "user_message", activations: { joy: 0.8, sadness: 0.6 }, intensity: 1, intent: "chat", t: 1000 },
+			{ kind: "user_message", activations: { joy: 0.8, sadness: 0.6 }, intent: "chat", t: 1000 },
 			1000,
 		).state;
 		const c0 = totalCoherence(s.rho);
@@ -208,9 +207,9 @@ describe("quantum order effects", () => {
 		const second = order === "AB" ? HOSTILE : WARM;
 		let t = s.t;
 		t += dt;
-		s = transition(s, { kind: "user_message", activations: first, intensity: 1, intent: "chat", t }, dt).state;
+		s = transition(s, { kind: "user_message", activations: first, intent: "chat", t }, dt).state;
 		t += dt;
-		s = transition(s, { kind: "user_message", activations: second, intensity: 1, intent: "chat", t }, dt).state;
+		s = transition(s, { kind: "user_message", activations: second, intent: "chat", t }, dt).state;
 		return s;
 	}
 	const net = (s: ReturnType<typeof run>) => netEmotions(s.emotions, s.opponent);
@@ -289,5 +288,31 @@ describe("quantum order effects", () => {
 			}
 		}
 		expect(maxErr).toBeLessThan(1e-9);
+	});
+});
+
+/**
+ * The intake contract. Contact events reach the kernel with an empty activation vector: whether a
+ * message FELT like something is the model's own report (`feel` -> runtime.refine, which replays this
+ * transition), never a keyword table's guess. That split only holds if transition() adds no affect of
+ * its own — otherwise every neutral "ok" would manufacture mood, belief evidence and a kick.
+ */
+describe("a contact event with no activations invents no feeling", () => {
+	const flat = { kind: "user_message" as const, activations: {}, intent: "chat" as const };
+
+	it("leaves a flat state flat while still recording the contact", () => {
+		const s = birth({ seed: 5, born: 0 });
+		const t = s.t + HOUR;
+		const r = transition(s, { ...flat, text: "ok", t }, HOUR);
+		for (const e of EMOTIONS) expect(Math.abs(r.state.emotions[e]), e).toBeLessThan(1e-9);
+		expect(r.state.counters.messages).toBe(s.counters.messages + 1);
+		expect(r.state.t).toBe(t);
+	});
+
+	it("injects no fresh coherence and no kick", () => {
+		const s = birth({ seed: 9, born: 0 });
+		const r = transition(s, { ...flat, t: s.t + HOUR }, HOUR);
+		// Free evolution only dephases coherence; a felt event would raise it.
+		expect(totalCoherence(r.state.rho)).toBeLessThanOrEqual(totalCoherence(s.rho) + 1e-9);
 	});
 });

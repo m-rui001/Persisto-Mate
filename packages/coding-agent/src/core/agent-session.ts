@@ -458,6 +458,17 @@ export class AgentSession {
 	private _baseSystemPromptOptions!: NormalizedBuildSystemPromptOptions;
 	/** Prompt options after before_agent_start mutations for the active run. */
 	private _runSystemPromptOptions?: NormalizedBuildSystemPromptOptions;
+	/**
+	 * The last options before_agent_start produced, kept after the run clears the live ones.
+	 *
+	 * A turn that never emits before_agent_start — an extension's `pi.sendMessage(..., {triggerTurn:
+	 * true})` drives `_runAgentPrompt` directly — would otherwise fall back to the base options, and
+	 * diffing those against what the model currently holds deletes every extension-contributed
+	 * section (`companion: null` and friends) from the transcript. A continuation inside such a turn
+	 * would silently strip the companion's identity out from under it. Holding the last real options
+	 * makes the fallback a no-op instead of an amputation.
+	 */
+	private _lastSystemPromptOptions?: NormalizedBuildSystemPromptOptions;
 
 	constructor(config: AgentSessionConfig) {
 		this.agent = config.agent;
@@ -877,7 +888,8 @@ export class AgentSession {
 			const context = await this._compactBeforeNextAssistantResponse(turn.context);
 			const previousSnapshot = await previousPrepareNextTurnWithContext?.({ ...turn, context }, signal);
 			const nextContext = previousSnapshot?.context ?? context;
-			const runOptions = this._runSystemPromptOptions ?? this._baseSystemPromptOptions;
+			const runOptions =
+				this._runSystemPromptOptions ?? this._lastSystemPromptOptions ?? this._baseSystemPromptOptions;
 			const options = normalizeBuildSystemPromptOptions({
 				...runOptions,
 				selectedTools: this.getActiveToolNames(),
@@ -887,6 +899,7 @@ export class AgentSession {
 			const updateMessage = this._preparePromptAndToolLoadout(options, nextContext.messages);
 			// Keep session.systemPrompt and ctx.getSystemPrompt() in step with what the provider sees.
 			this._runSystemPromptOptions = options;
+			this._lastSystemPromptOptions = options;
 
 			return {
 				...previousSnapshot,
@@ -2057,6 +2070,7 @@ export class AgentSession {
 		}
 		const updateMessage = this._preparePromptAndToolLoadout(result.systemPromptOptions);
 		this._runSystemPromptOptions = result.systemPromptOptions;
+		this._lastSystemPromptOptions = result.systemPromptOptions;
 		if (updateMessage) messages.unshift(updateMessage);
 
 		preflightResult?.("started");

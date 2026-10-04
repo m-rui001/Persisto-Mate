@@ -25,6 +25,7 @@ whether or not anyone is talking to it.
 | Can look at what the user is doing | `extensions/mate/look-tool.ts` | a `look` tool takes a screenshot and hands the image to the model. Open by default per "大胆给权限" — no enable-flag, the model decides when looking is warranted |
 | May not reply / may reply later — but it is the model's CHOICE | `runtime.ts` `onUserMessage`, `daemon.ts` `replyInclination` | P1: the kernel no longer gates inbound messages. Every message reaches the model; the runtime only surfaces an ADVISORY lean (eager/open/muted/withdrawn) + the memories it stirred. The `input` handler always `continue`s |
 | May reach out proactively when the user is silent | `runtime.ts` heartbeat + `index.ts` `onImpulse` | produces an **impulse** grounded in the memory graph; the model decides whether/how to voice it |
+| Feelings also read from outside, by a cheap model, without interrupting the reply | `mate/src/judge.ts`, `extensions/mate/judge-run.ts` | opt-in `settings.mate.judgeModel`: after 3+ new user turns and 10 minutes, a small model scores each emotion's CHANGE (-2..+2) over the last turns; the reading becomes an `appraisal` event (see below) |
 | Has its OWN non-preset motivations (autonomy) | `mate/src/{types,params,kernel,daemon}.ts` | 5 stored homeostatic drives plus DERIVED boredom (see below). These only surface as felt urges + grounded thoughts — never as entrenched capability |
 | Reaching out is **not built in** — discovered by the companion | `feel-tool.ts` `channel` + `index.ts` `onImpulse` | we surface the impulse and record channels it found; we never send anything ourselves |
 | Short, natural language; avoid "AI flavor" | system-prompt persona + `companion` section | "reply like a person texting"; state is *felt*, not narrated |
@@ -89,11 +90,38 @@ whether or not anyone is talking to it.
 - **`before_agent_start`** → write `sections.companion = COMPANION_GUIDANCE + <mate-core>` — the
   identity + character + memory summary — so it enters the CACHED system-prompt prefix and is paid for
   once, not per turn (P5).
-- **`agent_start` / `agent_settled`** → streaming guard and lifecycle.
+- **`agent_start` / `agent_settled`** → streaming guard and lifecycle. On settling, and again whenever the
+  model finishes a `remember` call, the runtime may take an **affect judgement** (see below) — the
+  writing of a memory is the natural moment to ask what just happened.
 - **`session_shutdown`** → `sleep()`: seal the current open into a close mark in the session body, so
   the companion remembers when it stopped existing (paired with the `wake()` log at boot).
 - **heartbeat** → on a `reach_out` impulse, surface the thought + any advisory cautions to the model and
   let it decide whether and how to express it, including via any channel it discovered for itself.
+
+### The affect judge (opt-in: `settings.mate.judgeModel`)
+
+`feel` is the model telling the kernel what a message did to it. It costs an interrupted turn, so a
+model can skip it — and then a whole quiet stretch integrates with no affect at all. The judge is the
+second, automatic path in: after an exchange has carried at least 3 new user turns and 10 minutes since
+the last reading, a CHEAP model (any chat model you name, e.g. `aliyun/qwen-flash`) is shown the last
+turns and asked one comparative question per emotion:
+
+```
+sadness: -2 -1 0 +1 +2   // "clearly fell / fell a little / unchanged / rose a little / clearly rose"
+```
+
+Deltas, not levels: a small model cannot estimate "how much sadness is in this, 0..1" without an anchor,
+but it can answer "did it rise across these turns". A negative read is routed to Plutchik's antipode
+(joy −2 → +sadness) instead of discarded, so activations stay non-negative; and a full-scale reading
+(±2) moves a channel by 0.5 — half of the 1.0 the companion may report for itself, so an outside opinion
+can never out-shout the person having the feeling.
+It becomes an `appraisal` event: contact for mood, the relationship and beliefs — never presence, never
+a satisfied drive, never a counted message.
+
+It is OFF unless you name a model, because it sends what you said out of the conversation. The window
+holds only speech: no tool output, no injected state block, no private notes. `packages/mate/judge.ts`
+is the pure half (question, parsing, arithmetic, the gate) and is unit-tested; the network half is
+`extensions/mate/judge-run.ts`.
 
 ---
 

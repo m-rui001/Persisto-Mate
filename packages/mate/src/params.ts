@@ -146,7 +146,6 @@ export const DRIVE_FALL = 1 / (40 * 60_000);
 /** Awareness axis decay rates, 1/ms. */
 export const AWARENESS_DECAY = {
 	userPresence: 1 / (3 * 3_600_000),
-	conversationWarmth: 1 / (2 * 3_600_000),
 	socialPressure: 1 / (8 * 3_600_000),
 	thoughtSaturation: 1 / (6 * 3_600_000),
 };

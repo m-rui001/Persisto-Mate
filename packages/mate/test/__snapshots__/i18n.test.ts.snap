@@ -1,25 +1,23 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`language invariants > freezes the English surfaces (they ride the prompt cache) 1`] = `
-"<mate-core>
-name: mate · 0d old · 12 messages lived
+"name: mate · 0d old
 nature: O.53 C.78 E.4 A.3 N.44
-character: attachmentAvoidance .3, attachmentAnxiety .35, empathy .61, curiosity .6, impulsivity .4, sensuality .4, spirituality .4, loyalty .6
+character: attachmentAnxiety .35, empathy .61, curiosity .6, rumination .41
 beliefs: others are trustworthy .4, the world is mostly benign .4
 baseline: .0,.0,.0
-</mate-core>
 
 <mate>
 time: now 17:00, UTC, silent 9h (feels long)
-state: settled pad .18,.12,-0.02 | trust.99 sadness.87 anticipation.45 disgust.44 anger.39
+state: settled pad .18,.12,-0.02 | trust.64 sadness.53 anticipation.29 anger.27 disgust.24
 drives: curiosity.73 rest.51 growth.48
-toward the user: trust .39 close .01 respect .4 frust .54
-self: worth .54 ease .49 anxious .35 tired .4
+toward the user: trust in you .39 close .01 respect .4 frust .54
+self: said 12.0 worth .54 ease .49 anxious .35 tired .4
 impulse: energy .49 burst .38 | coherence 1.42 entropy .94
 inclination: eager (+0.39) — up for this one. you choose.
 </mate>
 
-<mate>settled pad .18,.12,-0.02 trust.99 sadness.87 anticipation.45 | drives curiosity.73 rest.51 growth.48 | silent long, energy .49</mate>
+<mate>settled pad .18,.12,-0.02 trust.64 sadness.53 anticipation.29 | drives curiosity.73 rest.51 growth.48 | silent long, energy .49</mate>
 
 been quiet a while; wondering what they're up to
 something I want to look into for its own sake

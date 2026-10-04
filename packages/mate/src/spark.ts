@@ -142,12 +142,17 @@ export function applyBeliefEvidence(
 	}
 
 	// Crystallisation: a topic the companion keeps meeting becomes a belief about itself, starting
-	// weak. Only the first topics per event are admitted, so a rambling message cannot spray the store.
+	// weak. Only the first topics per event are admitted, so a rambling message cannot spray the
+	// store. A belief says what the world is EXPECTED to be like, so a topic met with no valence at
+	// all has nothing to believe yet: neutral evidence creates no belief, it only marks the topic as
+	// seen once real evidence arrives. `label` is omitted when it would repeat `key` — the display
+	// layer already falls back to the key, and storing both doubles every topic belief's storage for
+	// a string the reader can already see.
 	for (const topic of evidence.topics) {
 		if (next[topic]) continue;
+		if (Math.abs(evidence.perceived) < SPARK.evidenceDeadZone) continue;
 		next[topic] = {
 			key: topic,
-			label: topic,
 			valence: clampPad(evidence.perceived),
 			confidence: SPARK.topicSeedConfidence,
 			count: 1,
@@ -185,9 +190,10 @@ function prune(beliefs: Record<string, Belief>): Record<string, Belief> {
 }
 
 /** Which seed beliefs bear on an event kind. Others: user messages (how this person treats us).
- * World: everything that happens, including what we ourselves put out. */
-export function seedBeliefsFor(kind: "user_message" | "proactive"): string[] {
-	return kind === "user_message" ? ["othersTrustworthy", "worldSafety"] : ["worldSafety"];
+ * World: everything that happens, including what we ourselves put out. An appraisal is the judge's
+ * read of a whole stretch of exchange, so it bears on both, exactly as a message does. */
+export function seedBeliefsFor(kind: "user_message" | "proactive" | "appraisal"): string[] {
+	return kind === "proactive" ? ["worldSafety"] : ["othersTrustworthy", "worldSafety"];
 }
 
 /** Repair a store loaded from disk; anything malformed falls back to the seed set rather than boot. */
@@ -200,7 +206,7 @@ export function sanitiseBeliefs(raw: unknown): Record<string, Belief> {
 		if (typeof b.valence !== "number" || typeof b.confidence !== "number") continue;
 		out[k] = {
 			key: typeof b.key === "string" ? b.key : k,
-			label: typeof b.label === "string" ? b.label : k,
+			...(typeof b.label === "string" && b.label !== k ? { label: b.label } : {}),
 			valence: clampPad(b.valence),
 			confidence: clampConfidence(b.confidence),
 			count: typeof b.count === "number" && Number.isFinite(b.count) ? Math.max(0, Math.floor(b.count)) : 0,

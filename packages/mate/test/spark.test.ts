@@ -27,7 +27,6 @@ function warmEvent(t: number, text?: string, topics?: string[]) {
 	return {
 		kind: "user_message" as const,
 		activations: { joy: 0.8, trust: 0.6 },
-		intensity: 1,
 		intent: "chat" as const,
 		text,
 		topics,
@@ -40,7 +39,6 @@ function hostileEvent(t: number) {
 	return {
 		kind: "user_message" as const,
 		activations: { anger: 0.7, fear: 0.5 },
-		intensity: 1,
 		intent: "chat" as const,
 		t,
 	};
@@ -158,7 +156,6 @@ describe("SPARK: the loop through the kernel", () => {
 			{
 				kind: "user_message",
 				activations: { anger: 0.7, fear: 0.5 },
-				intensity: 1,
 				intent: "chat",
 				text: "面试搞砸了，别提了",
 				t: s.t + HOUR,
@@ -205,7 +202,7 @@ describe("derived boredom (kernel.boredomOf)", () => {
 		b = catchUp(b, undefined, b.t + 6 * HOUR).state;
 		b = transition(
 			b,
-			{ kind: "user_message", activations: { surprise: 1, fear: 0.8 }, intensity: 1, intent: "chat", t: b.t + HOUR },
+			{ kind: "user_message", activations: { surprise: 1, fear: 0.8 }, intent: "chat", t: b.t + HOUR },
 			HOUR,
 		).state;
 		b = catchUp(b, undefined, b.t + 5 * HOUR).state;

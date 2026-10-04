@@ -340,13 +340,20 @@ export function recall(g: MemoryGraph, opts: RecallOptions): RecallHit[] {
 /**
  * The testing effect (ACT-R: a successful retrieval raises base-level activation; the
  * generation/testing effect in the memory literature). `recall` is pure, so this is the companion
- * side-effect the host applies to whatever surfaced: recalled memories get a little stickier and
- * their decay clock restarts. A memory you keep pulling up persists; one you never retrieve fades —
- * that is the remembering/forgetting balance this module exists to strike. Not a blanket bonus:
- * bounded, so trivia recalled a hundred times still can't outrank a core memory that is also
- * rehearsed.
+ * side-effect the host applies to whatever surfaced: recalled memories get a little stickier. A
+ * memory you keep pulling up persists; one you never retrieve fades — that is the
+ * remembering/forgetting balance this module exists to strike. Not a blanket bonus: bounded, so
+ * trivia recalled a hundred times still can't outrank a core memory that is also rehearsed.
+ *
+ * `t` is deliberately NOT touched — and there is no timestamp argument at all, which is the point.
+ * Resetting the decay clock here used to make every recall start the forgetting clock over, so
+ * whatever surfaced once surfaced again and again: one node became the companion's whole idle mental
+ * life ("第五次路过" — the same thought, arriving for the fifth time). Stickiness rises through
+ * `strength` instead, which is bounded, while time keeps forgetting at the same rate for a rehearsed
+ * memory as for a fresh one. The recall score's recency term still favours what was just written
+ * (`encode`), so a genuinely recent memory keeps its edge.
  */
-export function rehearse(g: MemoryGraph, keys: string[], now: number): MemoryGraph {
+export function rehearse(g: MemoryGraph, keys: string[]): MemoryGraph {
 	if (keys.length === 0) return g;
 	const nodes = { ...g.nodes };
 	let changed = false;
@@ -357,7 +364,6 @@ export function rehearse(g: MemoryGraph, keys: string[], now: number): MemoryGra
 			...n,
 			strength: Math.min(1, n.strength + REHEARSE_BOOST),
 			salience: Math.min(1, n.salience + 0.2),
-			t: now,
 		};
 		changed = true;
 	}
@@ -448,6 +454,26 @@ export function topNodes(g: MemoryGraph, now: number, k = 3): string[] {
 		.sort((a, b) => activation(b[1], now) - activation(a[1], now) || (a[0] < b[0] ? -1 : 1))
 		.slice(0, k)
 		.map(([key]) => key);
+}
+
+/** How many of the top nodes a thought seed may draw from. */
+const SEED_WINDOW = 4;
+
+/**
+ * Pick the memory an idle thought should be ABOUT, rotating through a short window around the top.
+ *
+ * Taking `topNodes(...)[0]` every time made one dominant node the companion's whole idle mental life:
+ * every thought was about the same thing, and the thought about that fact ("发现自己一直在绕X")
+ * arrived on schedule. Ranking is real information — the strongest retrievable memory IS the likeliest
+ * thing to be on one's mind — but a mind that can only revisit the front of the queue is a broken
+ * queue. So the seed is drawn from the top few, in rank order, rotating by `seq`: the caller advances
+ * `seq` once per decision, which keeps the choice deterministic given the state and the number of
+ * decisions taken, and lets a strong node lead most of the time without monopolising every thought.
+ */
+export function seedNode(g: MemoryGraph, now: number, seq: number): string | undefined {
+	const top = topNodes(g, now, SEED_WINDOW);
+	if (top.length === 0) return undefined;
+	return top[((seq % top.length) + top.length) % top.length];
 }
 
 // ---------------------------------------------------------------------------

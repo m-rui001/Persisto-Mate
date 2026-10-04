@@ -2,11 +2,36 @@
 
 ## [Unreleased]
 
+### Added
+
+- `seedNode(graph, now, seq)`: the idle-thought seed, rotating through the top few memories instead of always taking the strongest.
+- `kernel.DRIFTING_TRAITS`: the traits `nudgeCharacter` actually moves, which the character projection reads so it only shows what experience shaped.
+- `judge.ts`: the pure half of the affect judge - window selection, the "-2 fell clearly .. +2 rose clearly" question, answer parsing, delta arithmetic, opponent routing, the gain cap, and the gate. Asked for a LEVEL of sadness a small model invents a number; asked whether a feeling ROSE or FELL across the last turns it answers a comparative question it can actually answer. A fall is not thrown away: it is applied to Plutchik's antipode (joy -2 -> sadness +2), which keeps activations non-negative, and a full-scale reading is capped at 0.5 so an outside reader cannot out-shout the companion's own `feel`.
+
 ### Changed
 
 - Human-paced emotional dynamics: mood integrates emotional shifts over ~45 minutes instead of ~6 (no message-to-message whiplash); SPARK evidence rates halved (etaConfirm 0.05, etaViolate 0.025, etaValence 0.04) with centrality tau 30 events - attitudes now shift over weeks of consistent experience, not one conversation; trust gains reduced (0.004 per message, saturating as trust rises) so an afternoon of chat moves trust a little, not to 0.75.
 - The state block carries direction: the relationship line is labelled "toward the user" (对用户的感情), and the guidance states once that the whole block is internal and must never be revealed to the user. Command notes show typed arguments and follow-up choices ("the user then picked: ...").
 - Store format version bumped to 4: the episode log was removed - it duplicated every memory's text one-for-one; the summary's "recent" line now derives from the nodes. The loader speaks v4 only: older files are not migrated and start fresh, with no compatibility code paths. The node's `origin` stamp is gone with the migration machinery.
+- `tick()` returns `{ decision, state }` and writes the habituation trace of the thought the beat actually had, pruning entries older than six tau. Before, the trace was computed and dropped: every beat met every topic as brand new, so the same thought kept arriving at full urgency, and `kernel.topicSaturation` (the boredom input) read a store nothing ever wrote. The repetition advisory now reads that persisted record, so `PreSendChecks` lost `recentTopics`.
+- Idle thoughts rotate their memory seed through the top four nodes instead of always taking the strongest one, and curiosity grounds on the next node in that window: one dominant memory used to be the companion's whole idle mental life.
+- `rehearse()` no longer resets a memory's decay clock (it lost the `now` argument): a recalled memory gains bounded stickiness through `strength`/`salience`, while time forgets it at the same rate as a fresh one. Restarting the clock is what let one surfaced node keep re-surfacing forever.
+- The stable prefix no longer wraps itself in `<mate-core>` (the caller supplies the tag) and no longer counts messages: that counter moved to the volatile state block, so a per-turn number cannot re-emit the cached prefix every turn.
+- The character block shows only traits experience actually moves (`DRIFTING_TRAITS`); fixed parameters that nothing ever writes are no longer displayed as if life had shaped them.
+- Surfaced emotion numbers are the FELT (net) values - activation minus the opponent counter-swing - in the state block, the minimal block and `publicView`, matching the vector mood is computed from. One number per feeling across every surface.
+- Topic beliefs no longer store a `label` that repeats their `key` (`Belief.label` is now optional, the display layer falls back to the key), and neutral evidence crystallises no belief.
+- The English relationship line reads "trust in you", so the trust channel of the relationship cannot be misread as the `trust` emotion (Chinese already split 信赖 and 信任).
+- Guidance tells the model that a message carries no feeling until it reports one: the `feel` tool is the source of affect, not a refinement of a guess.
+- The state shape is now exactly the fields the kernel reads or writes (`sanitiseState` picks every level key-by-key, so a `state.json` from an older build sheds the deleted fields on load instead of carrying them forever).
+- `judgeDue`: the gate that decides when an outside reading of the exchange could actually say something new (a cooldown plus a minimum of new user turns).
+
+### Breaking Changes
+
+- `MateEvent.intensity` is gone. Intensity was already derived (`intensityOf(activations)` is the only thing `transition()` reads for "how hard did this land"), so the explicit field was a second dial for the same quantity - and every caller left it at 0 or repeated the vector, meaning a message the model reported as overwhelming could still be flagged as merely loud by a field nobody maintained.
+- `Character` is 17 traits instead of 30: 13 were initialised at birth and never read or written by anything (`humor`, `independence`, `ambition`, `frugality`, `spirituality`, `playfulness`, ...). The kernel only ever nudges what `DRIFTING_TRAITS` lists.
+- `MateState.counters` keeps `messages`, `transitions`, `sleepCycles`, `observations`. `proactiveSent`, `proactiveBlocked` and `dreams` were only ever initialised, so the numbers in `state.json` were statistics the companion was reporting about itself that could never change.
+- `MateState.perceivedGap` is gone: the subjective duration of the silence is computed from the clock whenever a render needs it (`context.ts`), and the stored copy was a write the next render overwrote.
+- `Awareness` is three axes instead of five. `conversationWarmth` was bumped and decayed on every event but read by nothing, and `temporalPhase` was written only by `learnTemporalPhase`, which had no caller - so the field sat at its birth value of 0.5 in `state.json` forever, a circadian phase that was never learned and never consulted. Both, and `dreamFragments` (an equation from the model description with no call site), are removed.
 
 ## [1.0.3] - 2026-10-03
 

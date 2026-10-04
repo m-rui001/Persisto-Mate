@@ -187,7 +187,7 @@ export function catchUp(
 
 /** A no-op event that just carries a timestamp: the clock moved, nothing happened. */
 export function tickEvent(t: number): MateEvent {
-	return { kind: "tick", activations: {}, intensity: 0, intent: "chat", t };
+	return { kind: "tick", activations: {}, intent: "chat", t };
 }
 
 /**

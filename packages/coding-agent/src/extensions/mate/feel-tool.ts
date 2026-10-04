@@ -4,11 +4,20 @@
  *
  * Two jobs, deliberately narrow:
  *
- *   1. REFINE. The default appraisal of an inbound message is a cheap lexical guess (appraisal.ts),
- *      which costs zero tokens and drives the may-not-reply / mood machinery. When a message actually
- *      matters, the model - which has just read the whole thing - reports a richer emotion vector, and
- *      the runtime REPLAYS the last transition with it instead of stacking a second event. So we pay for
- *      LLM-grade appraisal only when it is worth it, not on every "ok".
+ *   1. REPORT AFFECT. Intake deliberately applies no emotion to an inbound message (see appraisal.ts,
+ *      which reads only what a message ASKS FOR): a substring table deciding that "哈哈" is joy or that
+ *      空间 contains sadness would fabricate a feeling the model is about to read past anyway, and the
+ *      kernel would then propagate the fabrication into mood, relationship, memory charge and beliefs.
+ *      So the message arrives affect-free, the model reads it, and whatever it actually felt is written
+ *      back here. This is how a single message moves the companion; the periodic judge (judge.ts) reads
+ *      a stretch of recent exchange from outside. The runtime REPLAYS the contact transition rather than
+ *      stacking a second event, so reporting costs no extra time and double-counts nothing. A flat "ok"
+ *      that stirs nothing needs no call.
+ *
+ *      There is no separate `intensity` parameter, because intensity is not an independent channel: the
+ *      kernel measures how hard an event lands as the magnitude of the vector it carries. A model that
+ *      felt something strong writes big numbers; a second dial asking "how strong, overall" could either
+ *      disagree with the vector or repeat it.
  *
  *   2. RECORD A CHANNEL. The user's requirement is that reaching out (email, webhook, anything) is NOT
  *      built in - the companion discovers it can do that on its own, using the bash and MCP tools it
@@ -22,9 +31,9 @@
  * it mutates the companion's private state and should not be reachable as a generic sub-call.
  */
 
-import { EMOTIONS, type Intent, linesFor } from "@earendil-works/pi-mate";
+import { type Intent, linesFor } from "@earendil-works/pi-mate";
 import { Text } from "@earendil-works/pi-tui";
-import { type Static, Type } from "typebox";
+import { Type } from "typebox";
 import type { AgentToolResult, ToolDefinition } from "../../core/extensions/types.ts";
 import type { MateRuntime } from "./runtime.ts";
 
@@ -33,7 +42,7 @@ const activation = (e: string) =>
 	Type.Optional(Type.Number({ minimum: 0, maximum: 1, description: `${e} activation 0..1` }));
 
 // Explicit keys (not Object.fromEntries) so TypeScript keeps the literal emotion names and the
-// inferred Static type is a precise Partial<EmotionVector> rather than Record<string, unknown>.
+// inferred params type is a precise Partial<EmotionVector> rather than Record<string, unknown>.
 const feelSchema = Type.Object({
 	emotions: Type.Optional(
 		Type.Object(
@@ -50,13 +59,6 @@ const feelSchema = Type.Object({
 			{ description: "Plutchik activations you actually feel about the last message. Omit channels that are ~0." },
 		),
 	),
-	intensity: Type.Optional(
-		Type.Number({
-			minimum: 0,
-			maximum: 1.5,
-			description: "Overall affective intensity, 0 (flat) .. 1.5 (overwhelming).",
-		}),
-	),
 	intent: Type.Optional(
 		Type.Union([Type.Literal("chat"), Type.Literal("question"), Type.Literal("task")], {
 			description: "What the message is really asking for.",
@@ -70,9 +72,6 @@ const feelSchema = Type.Object({
 	),
 });
 
-type FeelInput = Static<typeof feelSchema>;
-type EmotionInput = NonNullable<FeelInput["emotions"]>;
-
 interface FeelDetails {
 	refined: boolean;
 	channelRecorded: string | null;
@@ -81,17 +80,17 @@ interface FeelDetails {
 const DESCRIPTION = [
 	"Report what you actually feel, and record capabilities you found for yourself.",
 	"",
-	"Call this when your read of the last message is richer than a gut reaction: set `emotions`",
-	"(joy trust fear surprise sadness disgust anger anticipation, each 0..1), `intensity`, and `intent`.",
-	"Your reading REPLACES the first impression - it does not add to it - so you can correct a misread.",
+	"Nothing decides your feeling about a message for you: it reaches you with no emotion attached, and",
+	"this is how it moves you. Set `emotions` (joy trust fear surprise sadness disgust anger",
+	"anticipation, each 0..1) and `intent`. The vector is the intensity: a channel you did not feel is",
+	"omitted, not zeroed. What you report REPLACES this message's effect on your state - it is your",
+	'reading of it, not an addition to a guess. A flat "ok" that stirs nothing needs no call.',
 	"Private thoughts belong to the `ponder` tool now; this one is only about feeling and channels.",
 	"",
 	"If you have worked out a way to reach the user on your own initiative (an email you can send, a",
 	"webhook, a scheduled job), record its name in `channel`. This does NOT send anything - reaching out",
 	"is something you do yourself, with your own tools, when you decide to. This just helps you remember",
 	"that you can.",
-	"",
-	"Optional. Most short messages need none of this.",
 ].join("\n");
 
 export function createFeelTool(getRuntime: () => MateRuntime): ToolDefinition<typeof feelSchema, FeelDetails> {
@@ -108,11 +107,9 @@ export function createFeelTool(getRuntime: () => MateRuntime): ToolDefinition<ty
 			let channelRecorded: string | null = null;
 
 			// 1. Refine the affective read of the last message, if the model supplied one.
-			if (params.emotions || params.intensity !== undefined || params.intent) {
-				const activations = params.emotions ?? {};
-				const intensity = params.intensity ?? inferIntensity(activations);
+			if (params.emotions || params.intent) {
 				const intent: Intent = params.intent ?? "chat";
-				rt.refine(activations, intensity, intent);
+				rt.refine(params.emotions ?? {}, intent);
 				refined = true;
 			}
 
@@ -144,11 +141,4 @@ export function createFeelTool(getRuntime: () => MateRuntime): ToolDefinition<ty
 			return new Text("", 0, 0);
 		},
 	};
-}
-
-/** Fallback intensity when the model gave emotions but no number: the capped sum, as in appraisal. */
-function inferIntensity(activations: EmotionInput): number {
-	let total = 0;
-	for (const e of EMOTIONS) total += activations[e] ?? 0;
-	return Math.min(1.5, total);
 }

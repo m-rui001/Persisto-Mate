@@ -57,7 +57,6 @@ function lived(seed: number) {
 			{
 				kind: "user_message",
 				activations: act,
-				intensity: 0.5,
 				intent: i % 3 ? "chat" : "question",
 				text: `note ${i} about the rocket and the garden`,
 				t,
@@ -129,11 +128,10 @@ describe("language invariants", () => {
 			userActive: false,
 			recentProactive: 0,
 			topic: "",
-			recentTopics: [],
 			coldEnding: true,
 		};
-		const en = tick(state, NOW, checks, emptyMemory(), "en");
-		const zh = tick(state, NOW, checks, emptyMemory(), "zh");
+		const en = tick(state, NOW, checks, emptyMemory(), "en").decision;
+		const zh = tick(state, NOW, checks, emptyMemory(), "zh").decision;
 		if (en.action === "reach_out" && zh.action === "reach_out") {
 			expect(zh.advisory.length).toBe(en.advisory.length);
 			expect(zh.thought.topic).toBe(en.thought.topic);

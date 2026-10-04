@@ -31,8 +31,14 @@ export interface Personality {
 }
 
 /**
- * The 30-trait character system (SOUL). All traits in [0,1] except optimismBias in [-0.3,+0.3].
+ * The character system (SOUL). All traits in [0,1] except optimismBias in [-0.3,+0.3].
  * Traits are the slowly-moving layer: personality is nature, character is nurture.
+ *
+ * This list is exactly the set of traits the kernel READS or WRITES, and it used to be 30 long. The
+ * paper names thirty; thirteen of them (humor, loyalty, ambition, playfulness, tenderness, frugality,
+ * …) arrived here as a birth default, a Chinese gloss and a prompt slot that nothing ever read or
+ * wrote — a constant dressed up as nurture. Deleting them is the rule this codebase should apply to
+ * every field: a trait earns its place by having a read or a write.
  */
 export interface Character {
 	selfWorth: number;
@@ -40,31 +46,18 @@ export interface Character {
 	optimismBias: number;
 	trustBaseline: number;
 	attachmentAnxiety: number;
-	attachmentAvoidance: number;
 	reflectiveness: number;
 	directness: number;
 	depthPreference: number;
-	humor: number;
 	warmth: number;
 	vitality: number;
 	curiosity: number;
-	growthOrientation: number;
 	tolerance: number; // patience with silence
 	impulsivity: number;
 	rumination: number;
 	vulnerability: number;
 	assertiveness: number;
 	empathy: number;
-	skepticism: number;
-	playfulness: number;
-	tenderness: number;
-	independence: number;
-	needForClosure: number;
-	sensuality: number;
-	spirituality: number;
-	ambition: number;
-	frugality: number;
-	loyalty: number;
 }
 
 export type TraitName = keyof Character;
@@ -109,8 +102,12 @@ export interface Drives {
 export interface Belief {
 	/** Stable key. Seed beliefs use fixed names; topic beliefs use model-named topic strings. */
 	key: string;
-	/** Display form. */
-	label: string;
+	/**
+	 * Display form, when it differs from `key`. Topic beliefs are named BY the model, so their key is
+	 * already readable and storing it twice only doubles the record; the display layer falls back to
+	 * `key` when this is absent (see i18n.beliefGloss). Seed beliefs carry a fixed phrase.
+	 */
+	label?: string;
 	/** Evaluative orientation in [-1, 1]: what the belief expects the world to be like. */
 	valence: number;
 	/** Subjective certainty in [0.05, 0.95]: a Bayesian-ish posterior, never allowed to saturate. */
@@ -121,13 +118,16 @@ export interface Belief {
 	t: number;
 }
 
-/** 5-axis awareness field (Global Workspace analog). */
+/**
+ * The awareness field (Global Workspace analog): the three axes something else in the kernel reads.
+ * A fifth (conversation_warmth) and a sixth (temporal_phase, with a learn function that had no caller)
+ * were transcribed from the model description and maintained forever by nobody downstream — a number in
+ * state.json that no decision consults is scenery, not a state variable.
+ */
 export interface Awareness {
 	userPresence: number; // [0,1]
-	conversationWarmth: number; // [0,1]
 	socialPressure: number; // [-1,1]  negative = impulse to reach out
 	thoughtSaturation: number; // [0,1]
-	temporalPhase: number; // [0,1]
 }
 
 /** Allostatic mood regulation state. */
@@ -172,20 +172,17 @@ export interface MateState {
 	habituation: Record<string, { s: number; t: number }>;
 	/** Accumulated self-observations (bounded). */
 	observations: string[];
-	/** Monotonic counters, for telemetry and MIRROR-style scoring. */
+	/** Monotonic counters, for telemetry. A counter earns its place by being read: the ones that were
+	 * only ever initialised (proactiveSent, proactiveBlocked, dreams) are gone, because a number in
+	 * state.json that nothing ever writes is a statistic the companion is lying about. */
 	counters: {
 		messages: number;
 		transitions: number;
-		proactiveBlocked: number;
-		proactiveSent: number;
 		sleepCycles: number;
-		dreams: number;
 		observations: number;
 	};
 	/** Cusp catastrophe flag: set when a phase transition has occurred and not yet released. */
 	catastrophe: boolean;
-	/** Last computed subjective duration, ms. Diagnostic only. */
-	perceivedGap: number;
 	/**
 	 * Exponential moving average of the transition surprise (the Friston self-prediction error),
 	 * updated in exact closed form so catch-up remains subdivision-invariant. Low values mean recent
@@ -201,10 +198,21 @@ export type Intent = "chat" | "question" | "task";
 
 /** An external event fed to the kernel. */
 export interface MateEvent {
-	kind: "user_message" | "proactive" | "self_observation" | "sleep" | "wake" | "tick";
-	/** Plutchik activations in [0,1] produced by appraisal (the only LLM-influenced input). */
+	/**
+	 * `appraisal` is the periodic verdict of the cheap judge model on the stretch of exchange since
+	 * the last one: affect about what passed between us, arriving after the fact. It moves feeling,
+	 * the relationship, character and beliefs the way contact does, and it satisfies no drive and
+	 * counts no message — nothing new happened, only what it meant was decided.
+	 */
+	kind: "user_message" | "proactive" | "self_observation" | "appraisal" | "sleep" | "wake" | "tick";
+	/**
+	 * Plutchik activations in [0,1] — the only LLM-influenced input, and deliberately never a guess.
+	 * Intake applies contact events with an empty vector; affect arrives either from the model's own
+	 * `feel` report or from the periodic judge (see kernel.ts, `appraisal` events), and nothing else.
+	 * There is no separate intensity field: the kernel measures a felt event by this vector
+	 * (`intensityOf`), so a second number could only ever disagree with it.
+	 */
 	activations: Partial<EmotionVector>;
-	intensity: number;
 	intent: Intent;
 	/**
 	 * Text, for the observations ring and for SPARK topic-belief matching. Never used by the kernel's

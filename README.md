@@ -22,7 +22,7 @@ an affective middleware on top, following
 Character and Persistent Internal State*, v8, Zenodo 20400530, CC-BY-4.0](https://zenodo.org/record/20400530).
 
 A deterministic kernel in `packages/mate` runs on every event with no LLM calls. It carries Plutchik
-emotions with opponent process, an Ornstein-Uhlenbeck PAD mood, Big Five personality, a 30-trait
+emotions with opponent process, an Ornstein-Uhlenbeck PAD mood, Big Five personality, a 17-trait
 character, homeostatic drives, and an 8×8 complex density matrix. That last one reproduces the
 paper's emotional order effect: warming then provoking someone lands differently than provoking then
 warming, where a plain vector of scores cannot.

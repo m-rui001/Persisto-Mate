@@ -24,6 +24,7 @@ import {
 	recall,
 	rehearse,
 	sanitiseMemory,
+	seedNode,
 	summary,
 	topicMatchesText,
 	topNodes,
@@ -153,9 +154,50 @@ describe("memory: the testing effect (rehearse)", () => {
 
 	it("rehearse is a no-op for empty input and for unknown keys", () => {
 		const g = graphOf([["x", neutral("x", 0.5, 0)]]);
-		expect(rehearse(g, [], 0)).toBe(g);
-		const out = rehearse(g, ["not_here"], 10);
+		expect(rehearse(g, [])).toBe(g);
+		const out = rehearse(g, ["not_here"]);
 		expect(out.nodes.x.strength).toBe(0.5);
+	});
+
+	it("rehearse raises strength without restarting the decay clock", () => {
+		// Regression: `t: now` here made every recall refresh the node, so the same dominant memory
+		// kept surfacing beat after beat ("第五次路过") and never faded. Stickiness must come only from
+		// `strength`; the timestamp stays put so forgetting runs at the same rate either way.
+		const aged: MemoryNode = { ...neutral("aged", 0.5, 0), t: 0 };
+		const g = graphOf([["aged", aged]]);
+		const out = rehearse(g, ["aged"]);
+		expect(out.nodes.aged.t).toBe(0);
+		expect(out.nodes.aged.strength).toBeGreaterThan(0.5);
+	});
+});
+
+describe("memory: seedNode rotates the idle-thought seed", () => {
+	// Regression against one dominant node being the companion's whole inner life: the seed used to
+	// be `topNodes(...)[0]`, so every thought was about the same subject, including the thought about
+	// repeating itself.
+	const g = graphOf([
+		["a", neutral("a", 0.9, 0)],
+		["b", neutral("b", 0.7, 0)],
+		["c", neutral("c", 0.5, 0)],
+		["d", neutral("d", 0.3, 0)],
+		["e", neutral("e", 0.1, 0)],
+	]);
+
+	it("walks the top window in rank order and wraps", () => {
+		expect(seedNode(g, 0, 0)).toBe("a");
+		expect(seedNode(g, 0, 1)).toBe("b");
+		expect(seedNode(g, 0, 2)).toBe("c");
+		expect(seedNode(g, 0, 3)).toBe("d");
+		expect(seedNode(g, 0, 4)).toBe("a");
+		// The window is the TOP few, so the weakest node never becomes the seed.
+		for (let seq = 0; seq < 8; seq++) expect(seedNode(g, 0, seq)).not.toBe("e");
+	});
+
+	it("holds the one node it has, and has nothing to say about an empty graph", () => {
+		const single = graphOf([["only", neutral("only", 0.4, 0)]]);
+		expect(seedNode(single, 0, 0)).toBe("only");
+		expect(seedNode(single, 0, 7)).toBe("only");
+		expect(seedNode(emptyMemory(400), 0, 3)).toBeUndefined();
 	});
 });
 
@@ -279,8 +321,8 @@ describe("memory: the loader speaks v4 only", () => {
 		};
 		const g = sanitiseMemory(raw);
 		expect(g.version).toBe(4);
-		expect(g.nodes["abc"].label).toBe("a whisper worth keeping");
-		expect(g.nodes["def"].strength).toBe(0.6);
+		expect(g.nodes.abc.label).toBe("a whisper worth keeping");
+		expect(g.nodes.def.strength).toBe(0.6);
 		// Malformed entries are dropped individually, not fatal.
 		const partial = sanitiseMemory({ ...raw, nodes: { ...raw.nodes, bad: { strength: 1 } } });
 		expect(Object.keys(partial.nodes)).toHaveLength(2);

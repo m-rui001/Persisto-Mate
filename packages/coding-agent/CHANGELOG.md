@@ -4,12 +4,27 @@
 
 ### Added
 
+- The companion's affect judge, off until you name a model for it. Set `settings.mate.judgeModel` to a `provider/id` (any cheap chat model in `models.json`) and, once an exchange has carried at least 3 new user turns and 10 minutes since the last reading, that model is shown the last few turns and answers one comparative question per emotion - `sadness: -2 -1 0 +1 +2`, "did it rise or fall across this exchange" - and the answer becomes an `appraisal` event. It exists because `feel` costs an interrupted turn: a model that skips it leaves long stretches with no affect at all, and the drift goes unrecorded. A reading counts as contact for mood, the relationship and beliefs, but never as the user being present, never as a drive satisfied, never as a message. The window holds only what the two of them said to each other - no tool output, no injected state block, no private notes - and a full-scale reading (±2) moves one emotion by 0.5, half of what the companion may report for itself.
+- The judge reports itself to the user: one line when a reading lands (which turns it read, and each emotion that moved by how much), and a warning when the configured model cannot be resolved or the provider answers with an error. Without this the feature is a switch that either works invisibly or fails invisibly, and the user cannot tell those apart from having never turned it on. It is host UI only - a reading is never written into the state the model reads, so the companion cannot see its own diagnostics and start agreeing with them.
+- A judge reading that lands mid-turn is rebased into the snapshot `feel` replays from, so the model's own report at the end of the turn cannot silently undo the reading instead of the other way round.
 - `ui_prompt_end` now carries the prompt's `outcome` (the picked option or typed value), so observers see the second-step CHOICE of any extension command's follow-up dialog, not merely that a prompt opened.
 - Thinking blocks hidden by the setting are no longer expandable with a click: the reasoning is not user-facing content.
 
 ### Changed
 
 - Command notes show typed arguments ("/model foo"), not just the command name.
+- The companion's cached prompt is two sections instead of one: `companion` (the guidance, static per language) and `mate_core` (identity, character, beliefs, memory summary). Glued together, the slow half's per-message counter rewrote the whole prefix every turn, which is why the guidance paragraph kept reappearing in the transcript.
+- The companion's stable state now advances on its own beats: the heartbeat persists the state `tick()` returns, so the thought it just had is what the next beat habituates against.
+- `feel`'s report replays the contact event with the message text attached, so topic beliefs keep the evidence that message bears (it used to be dropped along with the heuristic vector).
+- `feel` and `ponder` no longer take an `intensity` number. The kernel measures how hard an event lands as the magnitude of the emotion vector it carries (`intensityOf`), so the parameter was a second dial for a quantity the first dial already set - and the two could disagree, with the tool's explicit value overriding what the model had just described.
+
+### Fixed
+
+- A turn started by an extension (`pi.sendMessage(..., { triggerTurn: true })`) no longer deletes the prompt sections other extensions contributed. It emits no `before_agent_start`, so the next turn diffed against the bare base options and stripped them from the transcript.
+
+### Removed
+
+- The emotion keyword table in the companion's intake appraisal: ~150 hand-maintained English/Chinese entries plus emoji, mapping surface tokens ("haha" -> joy, "难过" -> sadness) to Plutchik activations the kernel then treated as a real first impression. It invented a feeling about the one sentence the model was about to read in full, and the invention propagated - the unitary kick, mood, the relationship delta, memory charge, SPARK's belief evidence. It also could not see word boundaries in its own way: "function" fired joy because of "fun", 空间 fired sadness because of 空. Intake keeps what is genuinely structural (what a message asks for, and how hard it pulls for an answer); how it felt is reported by the model through `feel`, which is now the only path into an event's activations.
 
 ## [1.0.3] - 2026-10-03
 

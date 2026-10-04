@@ -22,9 +22,9 @@
 
 import { type Lang, linesFor } from "./i18n.ts";
 import { boredomOf, burstOf, energyOf } from "./kernel.ts";
-import { type MemoryGraph, topNodes } from "./memory.ts";
+import { type MemoryGraph, seedNode, topNodes } from "./memory.ts";
 import { HABITUATION_TAU } from "./params.ts";
-import type { Awareness, MateState, Thought } from "./types.ts";
+import type { MateState, Thought } from "./types.ts";
 
 /** What the loop decided to do about an impulse. */
 export type ImpulseDecision =
@@ -48,10 +48,39 @@ export interface PreSendChecks {
 	recentProactive: number;
 	/** Topic of the candidate thought, for freshness/overlap checks. */
 	topic: string;
-	/** Topics of the last few messages, for overlap suppression. */
-	recentTopics: string[];
 	/** Was the last exchange dismissive / did it end coldly? */
 	coldEnding: boolean;
+}
+
+/**
+ * Habituation, written back. `habituate()` returns a trace and the tick used to drop it, so every
+ * beat started from an empty history: the same thought kept arriving at full urgency ("第五次路过"),
+ * and `kernel.topicSaturation` — the boredom input — read a store nothing ever wrote. Now the topic
+ * the beat actually thinks gets its trace persisted, and entries older than 6·tau are dropped: their
+ * S has decayed under 0.05, and a mean over dead entries dilutes the live ones.
+ */
+const HABITUATION_PRUNE_MS = 6 * HABITUATION_TAU;
+
+function thinkHabit(state: MateState, topic: string, trace: { s: number; t: number }, now: number): MateState {
+	const habituation: Record<string, { s: number; t: number }> = {};
+	for (const [key, prev] of Object.entries(state.habituation)) {
+		if (now - prev.t <= HABITUATION_PRUNE_MS) habituation[key] = prev;
+	}
+	habituation[topic] = trace;
+	return { ...state, habituation };
+}
+
+/**
+ * Topics with a trace still inside one tau: what this companion has actually been thinking about
+ * lately. `preSendReview` uses it as the repetition note, so it reads the persisted record rather
+ * than a list the host would have to maintain beside it.
+ */
+function liveTopics(state: MateState, now: number): string[] {
+	const out: string[] = [];
+	for (const [topic, prev] of Object.entries(state.habituation)) {
+		if (now - prev.t <= HABITUATION_TAU) out.push(topic);
+	}
+	return out;
 }
 
 /**
@@ -94,9 +123,11 @@ export function generateThoughts(
 	const drives = state.drives;
 	const aw = state.awareness;
 
-	// A concrete "on my mind" seed: the strongest recent concept, if we have a graph. Used to turn
-	// abstract urges into about-something thoughts ("wondering what they're up to" → "…about X").
-	const seed = memory ? topNodes(memory, now, 1)[0] : undefined;
+	// A concrete "on my mind" seed: a recent concept, if we have a graph. Used to turn abstract urges
+	// into about-something thoughts ("wondering what they're up to" → "…about X"). Rotated by the
+	// transition counter rather than taken as the single strongest node: rank is real information, but
+	// a mind that can only ever revisit the front of the queue spends its idle life on one subject.
+	const seed = memory ? seedNode(memory, now, state.counters.transitions) : undefined;
 	const seedLabel = seed ? (memory!.nodes[seed]?.label ?? "") : "";
 
 	// A single grounded line: fold the recalled concept into the thought's topic so habituation and
@@ -123,12 +154,11 @@ export function generateThoughts(
 	// specific memory when possible — curiosity about SOMETHING specific beats free-floating itch.
 	if (drives.curiosity > 0.5) {
 		const c = (drives.curiosity - 0.5) * 2 * (0.4 + state.personality.o) * (0.5 + ch.curiosity);
-		// Widen to the top active memories that AREN'T the silence seed, so thoughts vary.
-		const curious = memory
-			? topNodes(memory, now, 4)
-					.map((k) => memory.nodes[k])
-					.find((n) => n && n.label !== seedLabel)
-			: undefined;
+		// The window the seed rotates through, taken one step past the seed: curiosity is about the
+		// NEXT thing on the list, so the two never ground the same memory in the same beat.
+		const window = memory ? topNodes(memory, now, 4) : [];
+		const curiousKey = window.length > 1 ? window[(window.indexOf(seed ?? "") + 1) % window.length] : undefined;
+		const curious = curiousKey ? memory?.nodes[curiousKey] : undefined;
 		mk("curiosity", L.thCuriosity(curious?.label ?? ""), c, curious ? `curiosity:${curious.label}` : "curiosity");
 	}
 
@@ -188,6 +218,7 @@ export function preSendReview(
 	state: MateState,
 	thought: Thought,
 	checks: PreSendChecks,
+	now: number,
 	lang: Lang = "en",
 ): PreSendReview {
 	const L = linesFor(lang);
@@ -219,7 +250,7 @@ export function preSendReview(
 
 	// --- JUDGMENT: advisories the model weighs and can overrule. ---
 
-	if (checks.recentTopics.includes(thought.topic)) {
+	if (liveTopics(state, now).includes(thought.topic)) {
 		advisory.push(L.adRecentTopic);
 	}
 
@@ -252,19 +283,28 @@ export function preSendReview(
 
 /**
  * The top-level tick. Given the current state, the memory graph, and the world, decide whether an
- * impulse is worth voicing. Returns a decision; performs nothing. The host turns a "reach_out" into
- * an actual message through whatever channel it has — including one the model set up itself.
+ * impulse is worth voicing. Returns the decision AND the state advanced by what this beat thought:
+ * thinking a topic is itself the exposure, so its habituation trace is written whether or not the
+ * impulse was voiced. Still performs nothing — the host persists the returned state and turns a
+ * "reach_out" into an actual message through whatever channel it has, including one the model set
+ * up itself.
  */
+export interface TickResult {
+	decision: ImpulseDecision;
+	/** State with this beat's thought traced. The SAME reference when nothing was thought. */
+	state: MateState;
+}
+
 export function tick(
 	state: MateState,
 	now: number,
 	checks: PreSendChecks,
 	memory?: MemoryGraph,
 	lang: Lang = "en",
-): ImpulseDecision {
+): TickResult {
 	const thoughts = generateThoughts(state, now, memory, lang);
 	if (thoughts.length === 0) {
-		return { action: "stay_silent", reason: "no active impulse" };
+		return { decision: { action: "stay_silent", reason: "no active impulse" }, state };
 	}
 
 	// Habituate and rank.
@@ -276,22 +316,29 @@ export function tick(
 		.sort((a, b) => b.thought.urgency - a.thought.urgency);
 
 	const top = gated[0];
+	const habituated = thinkHabit(state, top.thought.topic, top.trace, now);
 
-	const review = preSendReview(state, top.thought, checks, lang);
+	const review = preSendReview(state, top.thought, checks, now, lang);
 	if (review.blocked) {
 		// Rate/cost stop: keep the thought as inner life, but it does not fire. The advisory notes still
 		// ride along so the model sees what it was weighing.
-		return { action: "think_only", thought: top.thought, reason: review.blocked, advisory: review.advisory };
+		return {
+			decision: { action: "think_only", thought: top.thought, reason: review.blocked, advisory: review.advisory },
+			state: habituated,
+		};
 	}
 
 	// Not rate-limited. The impulse surfaces as a candidate to the model — whether to voice it, and how,
 	// is the model's call (P1). Advisory cautions travel with it.
 	return {
-		action: "reach_out",
-		thought: top.thought,
-		channel: checks.userActive ? "reply" : "proactive",
-		reason: review.reason,
-		advisory: review.advisory,
+		decision: {
+			action: "reach_out",
+			thought: top.thought,
+			channel: checks.userActive ? "reply" : "proactive",
+			reason: review.reason,
+			advisory: review.advisory,
+		},
+		state: habituated,
 	};
 }
 
@@ -338,22 +385,6 @@ export function replyInclination(state: MateState, msgWeight: number, lang: Lang
 		lean === "withdrawn" ? L.reWithdrawn : lean === "muted" ? L.reMuted : lean === "open" ? L.reOpen : L.reEager;
 
 	return { value, lean, reason };
-}
-
-/** Update the awareness field's temporal_phase from observed user activity hours (0-23 -> 0-1). */
-export function learnTemporalPhase(aw: Awareness, observedHours: number[]): Awareness {
-	if (observedHours.length === 0) return aw;
-	// Circular mean of activity hours, mapped to a phase.
-	let sx = 0;
-	let sy = 0;
-	for (const h of observedHours) {
-		const a = (h / 24) * 2 * Math.PI;
-		sx += Math.cos(a);
-		sy += Math.sin(a);
-	}
-	const meanAngle = Math.atan2(sy / observedHours.length, sx / observedHours.length);
-	const phase = (meanAngle / (2 * Math.PI) + 1) % 1;
-	return { ...aw, temporalPhase: phase };
 }
 
 /** Burst: how many short messages to fragment a reply into, and the pause between them. */

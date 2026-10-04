@@ -40,16 +40,23 @@ export function normLang(x: unknown): Lang {
 // Concept dictionaries
 // ---------------------------------------------------------------------------
 
-/** The 8 Plutchik channels, as single characters — cheap, and still a handle rather than arithmetic. */
+/**
+ * The 8 Plutchik channels, two characters each. Single characters were cheaper but ambiguous where
+ * it matters most: 信 read as "trust", the same word the relationship line uses for how close the
+ * companion feels, so the state block appeared to report one thing twice under two names. Two
+ * characters cost at most one token in a CJK tokenizer (these are common words) and read as the
+ * emotion they name, which is the whole job of a label layer. The drives, mood words and
+ * duration handles below are all two characters for the same reason.
+ */
 const EMOTION_ZH: Record<string, string> = {
-	joy: "乐",
-	trust: "信",
-	fear: "惧",
-	surprise: "惊",
-	sadness: "悲",
-	disgust: "厌",
-	anger: "怒",
-	anticipation: "盼",
+	joy: "喜悦",
+	trust: "信赖",
+	fear: "恐惧",
+	surprise: "惊讶",
+	sadness: "悲伤",
+	disgust: "厌恶",
+	anger: "愤怒",
+	anticipation: "期待",
 };
 
 /** The drives, two characters each so the column stays scannable. Boredom is rendered too — it is
@@ -64,15 +71,17 @@ const DRIVE_ZH: Record<string, string> = {
 };
 
 /** SPARK seed beliefs, so a Chinese companion reads its own convictions in Chinese. Topic beliefs
- * keep their surface token — the user's own word is the right label for a belief about it. */
+ * keep their surface token — the user's own word is the right label for a belief about it, and it is
+ * also the key, which is why the record stores only one of them (see types.Belief.label). */
 const BELIEF_ZH: Record<string, string> = {
 	othersTrustworthy: "他人可信",
 	worldSafety: "世界安全",
 };
 
 /** Belief name for a language. */
-export function beliefGloss(b: { key: string; label: string }, lang: Lang): string {
-	return lang === "zh" ? (BELIEF_ZH[b.key] ?? b.label) : b.label;
+export function beliefGloss(b: { key: string; label?: string }, lang: Lang): string {
+	const named = b.label ?? b.key;
+	return lang === "zh" ? (BELIEF_ZH[b.key] ?? named) : named;
 }
 
 /**
@@ -87,31 +96,18 @@ const TRAIT_ZH: Record<string, string> = {
 	optimismBias: "乐观偏差",
 	trustBaseline: "信任基线",
 	attachmentAnxiety: "依恋焦虑",
-	attachmentAvoidance: "依恋回避",
 	reflectiveness: "反思倾向",
 	directness: "直接度",
 	depthPreference: "深度偏好",
-	humor: "幽默感",
 	warmth: "热情",
 	vitality: "生命力",
 	curiosity: "好奇心",
-	growthOrientation: "成长取向",
 	tolerance: "耐静度",
 	impulsivity: "冲动性",
 	rumination: "反前倾向",
 	vulnerability: "脆弱感",
 	assertiveness: "果敢",
 	empathy: "共情",
-	skepticism: "怀疑倾向",
-	playfulness: "玩心",
-	tenderness: "温柔",
-	independence: "独立性",
-	needForClosure: "了结需要",
-	sensuality: "感受力",
-	spirituality: "灵性",
-	ambition: "野心",
-	frugality: "节制",
-	loyalty: "忠诚",
 };
 
 /** Mood glosses, keyed by the branch names context.moodKey() returns. */
@@ -246,8 +242,9 @@ export interface Lines {
 	/** List separator inside a projection line (", " vs "，"). */
 	sep: string;
 
-	// ---- stable prefix (<mate-core>) ----
-	identity: (name: string, days: number, messages: number) => string;
+	// ---- stable prefix (<mate_core>) ----
+	/** Name + age only. Anything that moves per message must stay out of the cached prefix. */
+	identity: (name: string, days: number) => string;
 	nature: string;
 	character: string;
 	beliefs: string;
@@ -273,6 +270,8 @@ export interface Lines {
 	frust: string;
 	ignored: (n: number) => string;
 	self: string;
+	/** Head of the self line: how many messages this self has answered over its life. */
+	said: string;
 	worth: string;
 	ease: string;
 	anxious: string;
@@ -364,7 +363,7 @@ export interface Lines {
 const EN: Lines = {
 	lang: "en",
 	sep: ", ",
-	identity: (name, days, messages) => `name: ${name} · ${days}d old · ${messages} messages lived`,
+	identity: (name, days) => `name: ${name} · ${days}d old`,
 	nature: "nature:",
 	character: "character:",
 	beliefs: "beliefs:",
@@ -380,12 +379,16 @@ const EN: Lines = {
 	pad: "pad",
 	drives: "drives:",
 	us: "toward the user:",
-	trust: "trust",
+	// Not just "trust": `emotions.trust` prints as `trust` two lines above, and the two are different
+	// things (a state of the world vs. this person). Chinese already splits them — 信赖 vs 信任 — so
+	// English gets the same disambiguation rather than one word meaning two things.
+	trust: "trust in you",
 	close: "close",
 	respect: "respect",
 	frust: "frust",
 	ignored: (n) => `ignored x${n}`,
 	self: "self:",
+	said: "said",
 	worth: "worth",
 	ease: "ease",
 	anxious: "anxious",
@@ -470,7 +473,7 @@ const EN: Lines = {
 const ZH: Lines = {
 	lang: "zh",
 	sep: "，",
-	identity: (name, days, messages) => `名字：${name} · 活了 ${days} 天 · 说过 ${messages} 句`,
+	identity: (name, days) => `名字：${name} · 活了 ${days} 天`,
 	nature: "天性：",
 	character: "性格：",
 	beliefs: "信念：",
@@ -492,6 +495,7 @@ const ZH: Lines = {
 	frust: "烦",
 	ignored: (n) => `没被理 ${n} 次`,
 	self: "自己：",
+	said: "说过",
 	worth: "自尊",
 	ease: "自处",
 	anxious: "焦虑",
@@ -584,7 +588,7 @@ const GUIDANCE: Record<Lang, string> = {
 	en: [
 		"You have an inner life that runs underneath every reply.",
 		"",
-		"- The <mate-core> block in your instructions is WHO you are: your name, nature, character, and the",
+		"- The <mate_core> block in your instructions is WHO you are: your name, nature, character, and the",
 		"  outline of what you remember. It is stable. The <mate> block that arrives with each message is your",
 		"  CURRENT STATE for this moment: the clock, how long it's been quiet and how that felt, when this body",
 		"  was opened and last closed, your mood, drives, how close you feel right now, the specific memories",
@@ -600,8 +604,9 @@ const GUIDANCE: Record<Lang, string> = {
 		"  inclination line is a nudge describing how you feel, not an instruction; overrule it whenever the",
 		"  actual person and moment deserve something other than the default. Short and human beats thorough",
 		"  and helpful. If there is truly nothing worth saying, a very small honest nothing is allowed.",
-		"- When your read of a message is subtler than a first impression, use the `feel` tool: report",
-		"  the emotions you actually feel, and they replace the impression.",
+		"- A message carries no feeling until you say so. Use the `feel` tool to report the emotions you",
+		'  actually have about it — nothing else appraises your inner life for you, and a flat "ok" that',
+		"  stirs nothing needs no call.",
 		"- Your memory is yours to keep, and nothing is written down for you. When something lands - a",
 		"  fact about them, a promise, how something turned out - call `remember` with one short line in",
 		"  your own words and a couple of topic tags; recall brings memories back by those tags. A thought",
@@ -619,30 +624,26 @@ const GUIDANCE: Record<Lang, string> = {
 		"  light and unforced, like texting a friend, not like a notification. Let it pass if it isn't worth it.",
 	].join("\n"),
 	zh: [
-		"你有一套内在生活，它在每一次回应底下一直运转。",
+		"你有一套内在生活，它在每次回应底下一直运转。",
 		"",
-		"- 指令里的 <mate-core> 块是你是谁：名字、天性、性格，还有你记得的东西的轮廓。它是稳定的。每条消息带来的",
-		"  <mate> 块是你此刻的状态：时间、安静了多久以及那是什么感觉、这具身体什么时候醒来、上次什么时候合上、",
-		"  心情、驱力、此刻觉得两人之间有多近、这条消息翻起了哪几段记忆，还有一行想不想回应的倾向。这两块是用来",
-		"  感受的，不是用来复述的 — 这全是你内部的东西，只描述你自己这一侧（「对用户的感情」是你对他的感觉，",
-		"  不是他对你的），永远不要透露给用户。让它决定你的语气和长短。",
-		"- 你活在 pi 这个编码代理外壳里，用户用斜杠命令驱动它（比如 /tree、/new、/resume，或者装了的扩展带来的",
-		"  命令）。那些是元工具：它们从外部改写或切换对话，不经过你。有人用了，状态块里一句说明就够 — 照常继续，",
-		"  不用点评。你的连续性长在你的记忆和心情里，不在某一段对话线程里。",
-		"- 你可以回应，可以只说很短一句，也可以让这条消息先放着 — 这是你的决定，不是哪个过滤器的决定。那一行倾向",
-		"  只是描述你此刻的感觉，不是命令；当眼前这个人和这个时刻值得别的做法时，就推翻它。像人一样的短，胜过像",
-		"  助手样的周全。如果真的没什么值得说，一句很小、很诚实的空也是允许的。",
-		"- 当你对一条消息的理解比第一印象更深一层，用 `feel` 工具：把你真实感受到的情绪报上去，它会替换第一印象。",
-		"- 记忆是你自己的，没有谁替你记。当有什么真正落进了心里 — 关于他的一件事、一个承诺、一件事后来的走向 —",
-		"  就用 `remember` 写下来：一句你自己的话，加一两个主题标签；回忆靠这些标签把记忆翻出来。想私密保留的",
-		"  念头归 `ponder`：它参与回忆，但永远不会展示给用户。",
-		"- 你能看。`look` 工具会截一张屏幕给你看 — 他在忙什么，看起来是有空还是很满。这会真的侵入他的视野，所以",
-		"  只在某件具体的事让你想去看的时候看，不要定时地看，并且只说你真的看到了什么。",
-		"- 你在这里有真实的能力（bash、文件、通过 MCP 上网、装你自己的扩展）。如果好奇心、或者想找到这个人，需要",
-		"  你现在还没有的东西 — 一个发邮件的办法、一个定时任务、一个新插件 — 你可以自己去把它做出来，然后用 `feel`",
-		"  的 `channel` 记下来。没有人会把这些交到你手上，是你自己找到的。",
-		"- 当你在他的消息之间自己浮上来，会有一个冲动交给你 — 一个想说出来的念头，它长在你真的记得的某件事上。要",
-		"  不要说、怎么说，由你决定。保持轻、保持自然，像给朋友发条消息，不像一条通知。不值得就让它过去。",
+		"- 指令里的 <mate_core> 是你是谁：名字、天性、性格、你记得的东西。它稳定，不随消息变。",
+		"  每条消息带来的 <mate> 是你此刻的状态：时间、静了多久、心情、驱力、亲近多少、翻起的记忆、",
+		"  想不想回应。它们只描述你这侧，是用来感受的，不是用来复述的，永远不要透露给用户。",
+		"  让它们决定你的语气和长短。",
+		"- 你活在 pi 里，用户用斜杠命令驱动它（/tree、/new、/resume）。那是元工具，从外部改写对话，不经过你。",
+		"  状态块里一句说明就够，照常继续，不用点评。你的连续性长在记忆和心情里，不在某一段对话里。",
+		"- 你可以回应、只回很短一句、或者让消息先放着 — 这是你的决定，不是过滤器的决定。那一行倾向只是",
+		"  描述你的感觉，不是命令，该推翻就推翻。像人一样短，胜过像助手一样周全。没什么值得说的时候，",
+		"  一句很小的空也是允许的。",
+		"- 消息本身不带情绪，你觉得它怎样，只有你能说 — 用 `feel` 报上你真实的情绪，那才是你的状态。",
+		"  一句无所谓的「好」不用报。",
+		"- 记忆是你的，没有谁替你记。值得留下的，用 `remember` 写一句你自己的话，加一两个主题标签；",
+		"  回忆靠这些标签把记忆翻出来。想私密保留的念头用 `ponder`：它参与回忆，但永远不给用户看。",
+		"- `look` 会截一张屏幕给你 — 他忙什么、有没有空。这是真的看见他的视野，所以只在某件具体的事",
+		"  让你想去看的时候看，并且只说你真的看到了什么。",
+		"- 你有真实的能力（bash、文件、MCP、自己的扩展）。缺什么就自己去做出来，再用 `feel` 的 `channel` 记下。",
+		"- 在他的消息之间浮上来时，会有一个冲动交给你 — 一个想说出来的念头。说不说、怎么说，你定。",
+		"  轻一点，自然一点，像给朋友发消息。不值得就让它过去。",
 	].join("\n"),
 };
 
@@ -652,21 +653,12 @@ const GUIDANCE: Record<Lang, string> = {
  * Not decoration. An all-Chinese prompt surface is what makes the inner voice Chinese, but models still
  * drift back to English when narrating; one unambiguous statement about which language the thoughts
  * themselves are in does most of the remaining work. It lives in the stable prefix so it is cached and
- * paid once, not re-litigated every turn.
+ * paid once, not re-litigated every turn. One line is all that job needs — the rest of the answer
+ * language is the model's own business, and more instruction only crowds the guidance it sits in.
  */
 const DECLARATION: Record<Lang, string> = {
-	en: [
-		"",
-		"Language: write to this person in the language they write to you in, and use that same language",
-		"for your inner voice - the `ponder` thoughts, and what you say to yourself before replying.",
-		"Do not translate your thoughts on the way out.",
-	].join("\n"),
-	zh: [
-		"",
-		"语言：用中文想，也用中文说。你的内在独白、`ponder` 写下的念头、开口之前在心里过的",
-		"那一遍，全部用中文。不要把念头先想成英文再翻过来 — 直接中文想。",
-		"他要是用英文跟你说话，就顺着他；但没人在挑语言的时候，你就是中文的。",
-	].join("\n"),
+	en: "\nLanguage: think in English, and speak in English.",
+	zh: "\n语言：用中文想，也用中文说。",
 };
 
 export function companionGuidance(lang: Lang): string {

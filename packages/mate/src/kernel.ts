@@ -227,6 +227,14 @@ export function updateMood(
 	return { mood: out, seed: s };
 }
 
+/**
+ * How much one verdict of the judge counts for the relationship. An appraisal event stands for a whole
+ * stretch of exchange (the messages since the last verdict), so it moves trust/attachment/familiarity
+ * at the scale of about ten warm contacts, not one. The judge is rate-limited by its own cooldown, so
+ * this cannot compound into a fast lane past weeks of ordinary conversation.
+ */
+const APPRAISAL_REL_WEIGHT = 10;
+
 /** Step 6 - relationship update. */
 function updateRelationship(
 	rel: Relationship,
@@ -242,21 +250,24 @@ function updateRelationship(
 	// by the event's valence. The drop is capped per event.
 	const baseline = character.trustBaseline;
 	next.trust = next.trust + (baseline - next.trust) * (1 - Math.exp(-dt / (30 * 86_400_000)));
-	if (event.kind === "user_message") {
+	// Contact grows the relationship. An APPRAISAL — the judge's verdict on a whole stretch of exchange
+	// — grows it once for the whole stretch it stands for, not once per message, because by then the
+	// messages themselves are already counted.
+	if (event.kind === "user_message" || event.kind === "appraisal") {
+		const w = event.kind === "appraisal" ? APPRAISAL_REL_WEIGHT : 1;
 		// Warmth earns trust slowly, and the more trust there already is, the smaller the next
 		// increment: an afternoon of chat moves it a little; weeks of consistency move it a lot.
-		const delta = 0.004 * centre.p * i * (1 - 0.5 * next.trust);
+		const delta = 0.004 * centre.p * i * (1 - 0.5 * next.trust) * w;
 		next.trust = clamp01(
 			delta < 0 ? Math.max(next.trust + delta, next.trust * (1 - TRUST_DROP_CAP)) : next.trust + delta,
 		);
-	}
-
-	// Attachment grows with repeated positive contact, Hebbian-style.
-	if (event.kind === "user_message") {
-		next.attachment = clamp01(next.attachment + 0.004 * Math.max(0, centre.p) * i + 0.0006);
-		next.familiarity = clamp01(next.familiarity + 0.002);
+		// Attachment grows with repeated positive contact, Hebbian-style.
+		next.attachment = clamp01(next.attachment + (0.004 * Math.max(0, centre.p) * i + 0.0006) * w);
+		next.familiarity = clamp01(next.familiarity + 0.002 * w);
 		// Respect responds to depth and to being taken seriously (task intent).
-		next.respect = clamp01(next.respect + (event.intent === "task" ? 0.003 : 0.001) * Math.max(0, centre.p + 0.3));
+		next.respect = clamp01(
+			next.respect + (event.intent === "task" ? 0.003 : 0.001) * Math.max(0, centre.p + 0.3) * w,
+		);
 	}
 
 	// Frustration: rises when we want contact and get none, falls on warm exchange.
@@ -296,9 +307,31 @@ function softUpdate(trait: number, delta: number, lo = 0, hi = 1): number {
 	return clamp(trait + delta * gate, lo, hi);
 }
 
+/**
+ * The traits `nudgeCharacter` actually moves. This list is the single source of truth for what
+ * "character" means in the projections (see context.topTraits): the trait block in the stable prefix
+ * exists to show what experience has SHAPED, and rendering a trait nothing ever writes shows a
+ * constant dressed up as a personality. The other traits in `Character` are fixed parameters — they
+ * modulate the kernel (tolerance stretches perceived silence, impulsivity scales the proactive
+ * budget) but never drift, and their effects are already visible in the numbers those systems emit.
+ */
+export const DRIFTING_TRAITS: ReadonlyArray<keyof Character> = [
+	"selfWorth",
+	"selfEfficacy",
+	"warmth",
+	"trustBaseline",
+	"attachmentAnxiety",
+	"vulnerability",
+	"rumination",
+	"vitality",
+	"directness",
+	"empathy",
+	"curiosity",
+];
+
 function nudgeCharacter(character: Character, centre: PAD, event: MateEvent, rel: Relationship): Character {
 	const next: Character = { ...character };
-	if (event.kind !== "user_message" && event.kind !== "proactive") return next;
+	if (event.kind !== "user_message" && event.kind !== "proactive" && event.kind !== "appraisal") return next;
 
 	const iemo = Math.min(intensityOf(event.activations), 2);
 	if (iemo <= 0.02) return next; // a neutral greeting produces zero drift
@@ -361,18 +394,12 @@ export function updateDrives(
 export function updateAwareness(aw: Awareness, state: MateState, dt: number, contact: boolean): Awareness {
 	const next: Awareness = { ...aw };
 	const n = state.personality.n;
-	const e = state.personality.e;
 	const o = state.personality.o;
 
 	// user_presence decays; neuroticism slows the decay (anxious personalities feel absence acutely).
 	const presenceRate = AWARENESS_DECAY.userPresence * (1 - 0.4 * n);
 	if (contact) next.userPresence = clamp01(Math.max(next.userPresence, 0.9));
 	else next.userPresence = clamp01(next.userPresence * Math.exp(-presenceRate * dt));
-
-	// conversation_warmth: extraversion keeps it longer.
-	const warmthRate = AWARENESS_DECAY.conversationWarmth * (1 - 0.4 * e);
-	if (contact) next.conversationWarmth = clamp01(next.conversationWarmth + 0.35);
-	else next.conversationWarmth = clamp01(next.conversationWarmth * Math.exp(-warmthRate * dt));
 
 	// social_pressure: released by TIME. Prolonged silence pushes it negative -> impulse to initiate.
 	// This is the mechanism that makes proactive contact emergent rather than scheduled.
@@ -583,9 +610,13 @@ export function addObservation(state: MateState, text: string): string[] {
 export function transition(state: MateState, event: MateEvent, dtOverride?: number): TransitionResult {
 	const dt = Math.max(0, dtOverride ?? event.t - state.t);
 	// The narrowed contact kind, for the SPARK block; null for ticks/sleep/wake/self-observation.
-	const contactKind: "user_message" | "proactive" | null =
-		event.kind === "user_message" || event.kind === "proactive" ? event.kind : null;
+	// `appraisal` counts as contact: it carries affect, so it kicks the state, moves the relationship
+	// and bears belief evidence. It is NOT presence — nobody just showed up, so the awareness terms
+	// (which model "the user is here right now") stay off, and no drive is satisfied by it.
+	const contactKind: "user_message" | "proactive" | "appraisal" | null =
+		event.kind === "user_message" || event.kind === "proactive" || event.kind === "appraisal" ? event.kind : null;
 	const contact = contactKind !== null;
+	const presence = event.kind === "user_message" || event.kind === "proactive";
 
 	// Self-prediction (Friston): forward-simulate before we move, so we can measure surprise after.
 	const predictedCentre = padCentreFromRho(state.emotions, state.rho);
@@ -712,7 +743,7 @@ export function transition(state: MateState, event: MateEvent, dtOverride?: numb
 		satisfied.growth = 0.3;
 	}
 	const drives = updateDrives(state.drives, character, dt, satisfied);
-	const awareness = updateAwareness(state.awareness, { ...state, character }, dt, contact);
+	const awareness = updateAwareness(state.awareness, { ...state, character }, dt, presence);
 
 	const work = contact ? 0.15 + Math.min(intensityOf(event.activations), 1.5) * 0.1 : 0;
 	const allostasis = updateAllostasis({ ...state, mood, character }, dt, work);
@@ -783,7 +814,6 @@ export function transition(state: MateState, event: MateEvent, dtOverride?: numb
 		observations,
 		counters,
 		catastrophe,
-		perceivedGap: perceivedDuration(state, dt),
 		surpriseEma,
 		seed,
 	};
@@ -828,9 +858,4 @@ export function sleepTransition(state: MateState, t: number): MateState {
 		counters: { ...state.counters, sleepCycles: state.counters.sleepCycles + 1 },
 		rho: fromEmotions(emotions, state.seed),
 	};
-}
-
-/** Dream richness (Eq. 6): fragments = max(1, floor((N + I_emo) * |E| * 0.5)). */
-export function dreamFragments(state: MateState, episodicCount: number, emotionalFraction: number): number {
-	return Math.max(1, Math.floor((state.personality.n + emotionalFraction) * Math.abs(episodicCount) * 0.5));
 }

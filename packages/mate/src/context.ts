@@ -38,7 +38,16 @@ import {
 	moodGloss,
 	traitGloss,
 } from "./i18n.ts";
-import { boredomOf, burstOf, energyOf, noticeThreshold, perceivedDuration, temporalMood } from "./kernel.ts";
+import {
+	boredomOf,
+	burstOf,
+	DRIFTING_TRAITS,
+	energyOf,
+	netEmotions,
+	noticeThreshold,
+	perceivedDuration,
+	temporalMood,
+} from "./kernel.ts";
 import { type MemoryGraph, summary as memorySummary, type RecallHit } from "./memory.ts";
 import { diagonalEntropy, totalCoherence } from "./quantum.ts";
 import { strengthOf } from "./spark.ts";
@@ -80,6 +89,9 @@ export interface StableContextOptions {
 	lang?: Lang;
 }
 
+/** Lookup form of kernel.DRIFTING_TRAITS, so the per-trait filter stays a set probe. */
+const DRIFTING_TRAIT_SET: ReadonlySet<string> = new Set(DRIFTING_TRAITS);
+
 /** Round to 2 decimals and drop trailing zero, e.g. 0.40 -> ".4". */
 function q(x: number): string {
 	const r = Math.round(x * 100) / 100;
@@ -89,6 +101,16 @@ function q(x: number): string {
 /** Format PAD compactly. */
 function pad(pad: PAD): string {
 	return `${q(pad.p)},${q(pad.a)},${q(pad.d)}`;
+}
+
+/**
+ * The emotions as FELT: raw activation minus the opponent-process counter-swing. This is what mood
+ * is computed from (kernel.padCentreFromRho takes the net vector), so displaying anything else puts
+ * the state block at odds with itself — the mind reads "悲伤.96" next to a flat mood and cannot tell
+ * which one is lying. The raw A-process is a mechanism; the net is the experience.
+ */
+function feltEmotions(state: MateState): Record<string, number> {
+	return netEmotions(state.emotions, state.opponent);
 }
 
 /** Top-N non-trivial channels, as "name.value" tokens sorted by magnitude, glossed for `lang`. */
@@ -129,11 +151,24 @@ function moodWord(m: PAD, lang: Lang): string {
 	return moodGloss(moodKey(m), lang);
 }
 
-/** Core character traits, rendered as name.value with a floor so only meaningful ones show. */
-function topTraits(ch: MateState["character"], floor = 0.55, n = 8, lang: Lang = "en"): string {
+/**
+ * Core character traits, rendered as name.value with a floor so only the pronounced ones show.
+ *
+ * Only DRIFTING_TRAITS are rendered: a trait nothing ever writes is a constant, and a constant in the
+ * "who I am" block reads as something experience shaped when it never moved. The fixed traits still
+ * do their work (tolerance stretches perceived silence, impulsivity scales the proactive budget) —
+ * their effects appear in the numbers those systems emit, not as a second personality layer here.
+ */
+function topTraits(
+	ch: MateState["character"],
+	floor = 0.55,
+	n = 8,
+	lang: Lang = "en",
+	drifting: ReadonlySet<string> = DRIFTING_TRAIT_SET,
+): string {
 	return (
 		Object.entries(ch)
-			.filter(([k, v]) => k !== "optimismBias" && typeof v === "number" && (v >= floor || v <= 1 - floor))
+			.filter(([k, v]) => drifting.has(k) && typeof v === "number" && (v >= floor || v <= 1 - floor))
 			.sort((a, b) => Math.abs(b[1] - 0.5) - Math.abs(a[1] - 0.5))
 			.slice(0, n)
 			.map(([k, v]) => `${traitGloss(k, lang)} ${q(v)}`)
@@ -169,6 +204,11 @@ function drivesForDisplay(state: MateState, now: number): Record<string, number>
  * memory-graph summary. Emits ONLY content that changes on the timescale of days, so prompt caching
  * holds across long stretches of conversation (P5). The volatile per-turn delta is NOT here; that
  * rides `stateContext`.
+ *
+ * The caller wraps this in a cached system-prompt section, which supplies the <mate_core> tags — the
+ * block does not wrap itself, so the model sees one tag, not two. Everything here is deliberately
+ * day-scale: a counter that moves on every message belongs to the volatile tail, because one number
+ * that changes per turn would re-emit the whole prefix every turn.
  */
 export function stableContext(state: MateState, opts: StableContextOptions = {}): string {
 	const p = state.personality;
@@ -176,9 +216,10 @@ export function stableContext(state: MateState, opts: StableContextOptions = {})
 	const L = linesFor(lang);
 	const lines: string[] = [];
 
-	// Identity: name + how long this self has existed (continuity of being).
+	// Identity: name + how long this self has existed (continuity of being). The message count is
+	// NOT here — it is per-turn volatile and rides the <mate> block instead (see stateContext).
 	const days = Math.max(0, Math.floor((state.t - state.born) / 86_400_000));
-	lines.push(L.identity(opts.name ?? "mate", days, state.counters.messages));
+	lines.push(L.identity(opts.name ?? "mate", days));
 
 	// Personality (Big Five): fixed per message, drifts only weekly → cacheable.
 	lines.push(kv(L.nature, `O${q(p.o)} C${q(p.c)} E${q(p.e)} A${q(p.a)} N${q(p.n)}`, lang));
@@ -205,9 +246,9 @@ export function stableContext(state: MateState, opts: StableContextOptions = {})
 		if (summary) lines.push(summary);
 	}
 
-	const body = `<mate-core>\n${lines.join("\n")}\n</mate-core>`;
+	const body = lines.join("\n");
 	const max = opts.maxChars ?? 2400;
-	return body.length <= max ? body : `${body.slice(0, max - 16)}\n…\n</mate-core>`;
+	return body.length <= max ? body : `${body.slice(0, max - 2)}…`;
 }
 
 /**
@@ -229,7 +270,7 @@ export function stateContext(state: MateState, opts: ContextOptions = {}): strin
 	const energy = energyOf(state);
 	const burst = burstOf(state);
 
-	const emo = topChannels(state.emotions, 0.1, 5, lang);
+	const emo = topChannels(feltEmotions(state), 0.1, 5, lang);
 	const drives = topDrives(drivesForDisplay(state, now), 0.2, 7, lang);
 	const coherence = totalCoherence(state.rho);
 	const entropy = diagonalEntropy(state.rho);
@@ -271,6 +312,7 @@ export function stateContext(state: MateState, opts: ContextOptions = {}): strin
 		kv(
 			L.self,
 			[
+				kv(L.said, q(state.counters.messages), lang),
 				kv(L.worth, q(ch.selfWorth), lang),
 				kv(L.ease, q(ch.selfEfficacy), lang),
 				kv(L.anxious, q(ch.attachmentAnxiety), lang),
@@ -333,7 +375,7 @@ export function minimalContext(state: MateState, opts: ContextOptions = {}): str
 	const L = linesFor(lang);
 	const now = opts.now ?? state.t;
 	const temporal = feelGloss(temporalMood(perceivedDuration(state, now - state.lastInteraction)), lang);
-	const emo = topChannels(state.emotions, 0.15, 3, lang);
+	const emo = topChannels(feltEmotions(state), 0.15, 3, lang);
 	const drives = topDrives(drivesForDisplay(state, now), 0.3, 3, lang);
 	const lines = [
 		`${moodWord(state.mood, lang)} ${L.pad} ${pad(state.mood)}${emo ? ` ${emo}` : ""}`,
@@ -356,12 +398,16 @@ export function driveNoticeThreshold(state: MateState): number {
  * numbers are honest signals — the companion is open about how it feels. Deliberately NOT exposed:
  * character trait internals beyond a couple, the density matrix, the observations ring, the belief
  * store beyond the projected strengths, and the content of private thoughts.
+ *
+ * Emotions here are the FELT (net) values, the same ones mood is computed from and the same ones the
+ * mind sees in its own state block: one number per feeling across every surface, or the companion
+ * quotes one figure and feels another.
  */
 export function publicView(state: MateState): Record<string, unknown> {
 	const r2 = (x: number) => Math.round(x * 100) / 100;
 	return {
 		mood: { p: r2(state.mood.p), a: r2(state.mood.a), d: r2(state.mood.d) },
-		emotions: Object.fromEntries(Object.entries(state.emotions).map(([k, v]) => [k, r2(v)])),
+		emotions: Object.fromEntries(Object.entries(feltEmotions(state)).map(([k, v]) => [k, r2(v)])),
 		drives: Object.fromEntries(
 			Object.entries({ ...state.drives, boredom: boredomOf(state, state.t) }).map(([k, v]) => [k, r2(v)]),
 		),

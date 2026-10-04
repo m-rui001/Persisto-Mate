@@ -30,7 +30,7 @@ for (const [label, ms] of [["1h", 3_600_000], ["1d", DAY], ["7d", 7 * DAY], ["36
 	const t0 = performance.now();
 	let n = 0;
 	for (let t = 60_000; t <= 7 * DAY; t += 60_000) {
-		s = transition(s, { kind: "tick", activations: {}, intensity: 0, intent: "chat", t }, 60_000).state;
+		s = transition(s, { kind: "tick", activations: {}, intent: "chat", t }, 60_000).state;
 		n++;
 	}
 	console.log(`naive 7d replay: ${(performance.now() - t0).toFixed(1)}ms over ${n} heartbeats`);
@@ -49,8 +49,8 @@ function run(order: "AB" | "BA", dt: number, seed: number) {
 	const first = order === "AB" ? WARM : HOSTILE;
 	const second = order === "AB" ? HOSTILE : WARM;
 	let t = s.t;
-	s = transition(s, { kind: "user_message", activations: first, intensity: 1, intent: "chat", t: (t += dt) }, dt).state;
-	s = transition(s, { kind: "user_message", activations: second, intensity: 1, intent: "chat", t: (t += dt) }, dt).state;
+	s = transition(s, { kind: "user_message", activations: first, intent: "chat", t: (t += dt) }, dt).state;
+	s = transition(s, { kind: "user_message", activations: second, intent: "chat", t: (t += dt) }, dt).state;
 	return s;
 }
 const net = (s: MateState) => netEmotions(s.emotions, s.opponent);
@@ -70,7 +70,7 @@ const net = (s: MateState) => netEmotions(s.emotions, s.opponent);
 // --- 5. Coherence after an emotional exchange ---
 {
 	let s = birth({ seed: 101, born: 0 });
-	s = transition(s, { kind: "user_message", activations: WARM, intensity: 1, intent: "chat", t: 1000 }, 1000).state;
+	s = transition(s, { kind: "user_message", activations: WARM, intent: "chat", t: 1000 }, 1000).state;
 	console.log(`coherence after warm exchange: ${totalCoherence(s.rho).toFixed(4)}`);
 }
 
@@ -79,7 +79,7 @@ const net = (s: MateState) => netEmotions(s.emotions, s.opponent);
 	let s = birth({ seed: 101, born: 0 });
 	// Simulate 4h of silence then a message.
 	s = catchUp(s, systemClock(), s.t + 4 * 3_600_000).state;
-	s = transition(s, { kind: "user_message", activations: WARM, intensity: 1, intent: "chat", t: s.t + 1000 }, 1000).state;
+	s = transition(s, { kind: "user_message", activations: WARM, intent: "chat", t: s.t + 1000 }, 1000).state;
 	const full = stateContext(s, { now: s.t });
 	const min = minimalContext(s, { now: s.t });
 	console.log(`--- stateContext (${full.length} chars ~${Math.round(full.length / 4)} tok) ---\n${full}`);

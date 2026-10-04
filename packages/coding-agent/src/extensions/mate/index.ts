@@ -47,6 +47,7 @@ import {
 } from "@earendil-works/pi-mate";
 import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "../../core/extensions/types.ts";
 import { createFeelTool } from "./feel-tool.ts";
+import { judgeFailureLine, judgeReadingLine, runAffectJudge } from "./judge-run.ts";
 import { createLookTool } from "./look-tool.ts";
 import { createPonderTool } from "./ponder-tool.ts";
 import { createRememberTool } from "./remember-tool.ts";
@@ -130,7 +131,15 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 		});
 
 		// ---------------------------------------------------------------------
-		// Cached prefix: identity + character + memory-graph summary + guidance.
+		// Cached prefix: two stable sections, split by how often they change.
+		//
+		//   companion - the guidance. Static per language, so it is emitted once and never re-sent.
+		//   mate_core - identity, character, beliefs, memory summary. Slow-drift, still cacheable.
+		//
+		// They were ONE section glued together, which meant the whole block was rewritten whenever
+		// either half changed - and the core half carried a per-message counter, so it changed every
+		// turn. The user's complaint was that the guidance paragraph kept reappearing in the
+		// transcript: this split plus the counter's move to the volatile tail is what stops it (P5).
 		// ---------------------------------------------------------------------
 		pi.on("before_agent_start", (event) => {
 			try {
@@ -140,10 +149,10 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 				// declaration at its end is the only delta, so the first boot after upgrade takes one
 				// cache miss, then holds. A language switch rewrites this whole section: one miss, then
 				// holds again (P5).
-				const guidance = companionSection(rt.language);
 				event.systemPromptOptions.sections = {
 					...event.systemPromptOptions.sections,
-					companion: core ? `${guidance}\n\n${core}` : guidance,
+					companion: companionSection(rt.language),
+					mate_core: core,
 				};
 			} catch {
 				// If sections are frozen for some reason, skip guidance; the state block still rides.
@@ -204,13 +213,14 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 			rt.setStreaming(true);
 		});
 
-		pi.on("agent_settled", () => {
+		pi.on("agent_settled", (_event, ctx) => {
 			rt.setStreaming(false);
 			try {
 				rt.onTurnSettled();
 			} catch {
 				// Defensive: settling must never throw.
 			}
+			maybeJudge(ctx);
 		});
 
 		// Closing: seal WHEN this body went to sleep, so it remembers its own comings and goings.
@@ -278,6 +288,44 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 				// Noting must never disturb the prompt itself.
 			}
 		});
+
+		// ---------------------------------------------------------------------
+		// The affect judge: a cheap model reads the last few turns from outside and reports what moved.
+		//
+		// Switched OFF until the user names a model for it in settings —
+		//   { "mate": { "judgeModel": "provider/id" } }
+		// — because taking a reading sends what the two of you said to somewhere else. Two triggers,
+		// both rate-limited by the runtime's cooldown and turn count: the moment the companion files a
+		// memory (it has just shown the exchange mattered to it), and the end of each turn. The window,
+		// the -2..+2 question and the opponent routing are in mate/judge.ts; the call is in ./judge-run.ts.
+		// ---------------------------------------------------------------------
+		pi.on("tool_result", (event, ctx) => {
+			if (event.toolName !== "remember") return;
+			maybeJudge(ctx);
+		});
+
+		/** The configured judge model, if any. Read every time: settings change without a restart. */
+		function judgeModel(): string | undefined {
+			const s = pi.getSettings() as { mate?: { judgeModel?: unknown } } | undefined;
+			const m = s?.mate?.judgeModel;
+			return typeof m === "string" && m.trim() ? m.trim() : undefined;
+		}
+
+		function maybeJudge(ctx: ExtensionContext): void {
+			const model = judgeModel();
+			if (!model || !rt.judgeDue(Date.now())) return;
+			// Fire and forget: a reading must never delay the reply it is reading about. runAffectJudge
+			// holds its own slot, so a beat and a `remember` cannot start two.
+			void runAffectJudge(rt, ctx, {
+				model,
+				// The two ways this feature fails quietly are the two the user cannot see from the
+				// conversation: a model string that resolves to nothing, and a provider that answers with
+				// an error. Both are worth one line, at most once per cooldown.
+				onError: (err) => ctx.ui.notify(judgeFailureLine(err, rt.language), "warning"),
+			}).then((reading) => {
+				if (reading) ctx.ui.notify(judgeReadingLine(reading, rt.language), "info");
+			});
+		}
 
 		// ---------------------------------------------------------------------
 		// /mate: a public, user-safe view. Private thoughts are never shown.

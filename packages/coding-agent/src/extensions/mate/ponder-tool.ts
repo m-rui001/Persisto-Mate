@@ -26,13 +26,6 @@ const ponderSchema = Type.Object({
 			description: "1-3 short subject tags, so this thought can resurface when the subject comes up again.",
 		}),
 	),
-	intensity: Type.Optional(
-		Type.Number({
-			minimum: 0,
-			maximum: 1,
-			description: "How much this matters to you (0 = casual, 1 = major). Default 0.3.",
-		}),
-	),
 });
 
 type PonderInput = Static<typeof ponderSchema>;
@@ -73,7 +66,7 @@ export function createPonderTool(getRuntime: () => MateRuntime): ToolDefinition<
 				};
 			}
 			const rt = getRuntime();
-			rt.ponder(text, params.intensity ?? 0.3, params.topics ?? []);
+			rt.ponder(text, params.topics ?? []);
 			// The ack rides back to the MODEL, so it speaks the companion's current language. The TUI
 			// renders nothing for this tool (below), so the word is never shown to the user.
 			const L = linesFor(rt.language);
