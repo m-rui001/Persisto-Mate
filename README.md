@@ -9,6 +9,7 @@
 <a id="en"></a>
 
 # Persisto Mate, a companion agent built on pi
+[![DOI](https://zenodo.org/badge/1401067092.svg)](https://doi.org/10.5281/zenodo.23117889)
 
 Persisto Mate is a public fork of [pi](https://github.com/earendil-works/pi), the minimal self-extensible
 coding agent (MIT © Mario Zechner). Upstream package names, structure, and the `@earendil-works/*`
@@ -263,6 +264,7 @@ CC-BY-4.0.
 <a id="zh"></a>
 
 # Persisto Mate，一个构建在 pi 之上的伴侣代理
+[![DOI](https://zenodo.org/badge/1401067092.svg)](https://doi.org/10.5281/zenodo.23117889)
 
 [← English](#en)
 
