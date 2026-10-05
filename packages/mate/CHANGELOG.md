@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-05
+
 ### Added
 
 - Drive satisfaction paths for the two drives that had none, so every drive can now actually fall (a drive that only rises is a leak, not a drive): `curiosity` is discharged by the measured surprise of an appraisal and by consolidating a thought with a subject (Loewenstein 1994's information-gap theory — a gap is closed by acquiring the missing information), and `growth` by task exchanges (White 1959 effectance; Deci & Ryan 2000 competence) and by `sleepTransition` directly (the old `sleep` event that carried its discharge was never emitted by any code, so the branch was dead). Every discharge magnitude reuses the existing discharge scale; no new constants.

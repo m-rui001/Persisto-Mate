@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-05
+
 ### Added
 
 - **`/judge`**: pick the affect-judge model from the terminal (`/judge` opens a selector over the registry, `/judge provider/id` sets one directly, `/judge off` clears it). It writes the new `mate` settings section through the host (`SettingsManager.updateMate`, exposed as `pi.updateMateSettings` on the extension API) — the user never edits settings.json by hand, the same shape as `/model` and `/login`.
