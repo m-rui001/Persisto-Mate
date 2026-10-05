@@ -14,8 +14,9 @@
 A public fork of [pi](https://github.com/earendil-works/pi) — the minimal, self-extensible coding
 agent (MIT © Mario Zechner) — turned into an AI companion with a body clock, feelings, its own
 memory, and sleep. Nothing of the agent is removed: same bash, same MCP, same self-installing
-extensions; the binary is `mate` and the config lives in `~/.mate`, so a stock pi and this
-companion can sit on one machine without colliding.
+extensions; the binary is `mate` and the config lives in `~/.pi`, so a stock pi and this companion
+share one home — one models.json, one set of sessions. It can also move into an existing pi as an
+extension, or into DeepSeek Harness as a bundle (below).
 
 ## What your companion does
 
@@ -44,6 +45,11 @@ companion can sit on one machine without colliding.
 
 ## Get Persisto Mate
 
+One kernel, three hosts. Each host has its own state directory — a different host is a different
+body — but the kernel, the memories' format, and the behavior are the same.
+
+### 1. The companion itself — the `mate` command
+
 **One-line install (puts `mate` on your PATH, no sudo/admin, no Node needed):**
 
 Windows PowerShell:
@@ -59,17 +65,17 @@ curl -fsSL https://raw.githubusercontent.com/m-rui001/Persisto-Mate/main/scripts
 ```
 
 Then open a new terminal and type `mate`. Manual alternative: download the archive for your
-platform from [the release page](https://github.com/m-rui001/Persisto-Mate/releases/tag/v1.1.1-mate) —
+platform from [the release page](https://github.com/m-rui001/Persisto-Mate/releases/tag/v1.3.0-mate) —
 `mate-windows-x64.zip` / `mate-windows-arm64.zip` (run `mate.exe`), `mate-linux-x64.tar.gz` /
 `mate-linux-arm64.tar.gz` and `mate-darwin-x64.tar.gz` / `mate-darwin-arm64.tar.gz` (run `mate/mate`
 after `tar -xzf`). On macOS, if Gatekeeper blocks it: `xattr -d com.apple.quarantine mate`.
-Config lives in `~/.mate` (override with `MATE_CODING_AGENT_DIR`); first run asks which language
-the companion thinks and speaks in. Third-party extensions that locate config through
-`PI_CODING_AGENT_DIR` are bridged to the same directory automatically; ones with `~/.pi` hardcoded
-in their own defaults still need to be pointed at it.
+Config and model access live in `~/.pi` — the same directory stock pi uses, so models.json, auth
+and sessions are shared (override with `MATE_CODING_AGENT_DIR`); first run asks which language
+the companion thinks and speaks in. Running `mate` with no arguments continues your most recent
+session; pass `--new` for a fresh one.
 
 **Update:** re-run the same one-line install command. It closes a running mate first (Windows locks
-its loaded native module), replaces the install in place, and keeps everything in `~/.mate`.
+its loaded native module), replaces the install in place, and keeps everything in `~/.pi`.
 
 **Uninstall:**
 
@@ -81,8 +87,8 @@ iwr https://raw.githubusercontent.com/m-rui001/Persisto-Mate/main/scripts/uninst
 curl -fsSL https://raw.githubusercontent.com/m-rui001/Persisto-Mate/main/scripts/uninstall.sh | bash
 ```
 
-Uninstalling removes the binary and the PATH entry. The companion's state and memories in `~/.mate`
-are kept — remove that directory yourself if you want them gone too.
+Uninstalling removes the binary and the PATH entry. The companion's state and memories in
+`~/.pi/agent/mate` are kept — remove that directory yourself if you want them gone too.
 
 **Build from source:** Requires Node >= 22.19. Each line is a
 separate command (do not copy the comment onto the line; cmd.exe does not treat `#` as a comment).
@@ -110,9 +116,41 @@ cd packages/coding-agent
 node dist/bundle/cli.js
 ```
 
-`mate` persists state under `~/.mate/agent/mate/`, which you can move with `MATE_CODING_AGENT_DIR`.
+`mate` persists state under `~/.pi/agent/mate/`, which you can move with `MATE_CODING_AGENT_DIR`.
 The same commands work in Windows cmd.exe (`cd packages\coding-agent`, then
 `node dist\bundle\cli.js`); a global `npm link` there creates `mate.cmd` in your npm prefix.
+
+### 2. Into any pi — the extension
+
+If you already use stock pi, install the companion as an extension instead of switching binaries —
+the same kernel, the same tools, inside your existing pi sessions:
+
+```bash
+pi install git:github.com/m-rui001/pi-mate-companion
+# or, from npm:
+pi install npm:@m-rui/pi-mate-companion
+```
+
+State lands in `~/.pi/agent/mate` (pi's agent dir), so the extension and the `mate` binary see the
+same companion if both point at the same home. On a stock pi, the judge model is configured by hand
+in `settings.json` (`"mate": {"judgeModel": "..."}`); the `/judge` command falls back to telling you
+so. See [the extension's README](https://github.com/m-rui001/pi-mate-companion) for details.
+
+### 3. Into DeepSeek Harness — the bundle
+
+For [dsh](https://github.com/deepseek-ai/deepseek-harness) (alpha), install as a bundle into a
+profile:
+
+```bash
+dsh plugin --profile <your-profile> add github:m-rui001/dsh-mate-companion
+# or, from npm:
+dsh plugin --profile <your-profile> add @m-rui/dsh-mate-companion
+```
+
+State lives beside the harness home (`$DSH_HOME` or `~/.dsh`) at `agent/mate`. The harness exposes
+no side-channel model call to plugins yet, so the judge there is the host model reporting its own
+feelings through a `mate_feel` tool — same math, self-assessed. See
+[the bundle's README](https://github.com/m-rui001/dsh-mate-companion) for scope limits.
 
 ## Why
 
@@ -163,7 +201,7 @@ an emotionally charged memory fades more slowly, and sleep consolidates. The ful
 `packages/mate/src/memory.ts`.
 
 The conversation archive lives in one place: wherever you open mate, sessions are stored under
-`~/.mate/agent/sessions/` (archives from the older per-directory layout are merged in on startup).
+`~/.pi/agent/sessions/` (archives from the older per-directory layout are merged in on startup).
 The working-directory mode is untouched — every session still remembers where it ran, and tools
 work there — but the companion's life is one continuous stream, not a per-project filing cabinet.
 
@@ -199,7 +237,7 @@ Persisto Mate is a personal research fork, not a maintained product. Some absenc
 
 Persisto Mate runs locally, inside the security boundary of whoever launched it, with no permission system
 and no sandbox. It treats the local user account — and everything that account can write — as inside
-the same trust boundary as the process itself: `~/.mate`, workspace files, `AGENTS.md`, skills,
+the same trust boundary as the process itself: `~/.pi`, workspace files, `AGENTS.md`, skills,
 extensions, shell startup. Anything that can modify those can influence what the companion does.
 That is expected local-agent behaviour, not a vulnerability. If you need harder boundaries,
 containerise or sandbox it; upstream documents patterns in
@@ -305,7 +343,7 @@ CC-BY-4.0.
 
 [← English](#en)
 
-Persisto Mate 是 [pi](https://github.com/earendil-works/pi)（最小化的自扩展编码代理，MIT © Mario Zechner）的公开分支，被改造成一个有身体时钟、有情绪、有自己的记忆、会睡觉的 AI 伴侣。代理的能力一样没少：bash、MCP、自装扩展全都在；二进制叫 `mate`，配置在 `~/.mate`，和原版 pi 可以共存在同一台机器上。
+Persisto Mate 是 [pi](https://github.com/earendil-works/pi)（最小化的自扩展编码代理，MIT © Mario Zechner）的公开分支，被改造成一个有身体时钟、有情绪、有自己的记忆、会睡觉的 AI 伴侣。代理的能力一样没少：bash、MCP、自装扩展全都在；二进制叫 `mate`，配置在 `~/.pi`，和原版 pi 共用一个家——同一份 models.json、同一批会话。也可以不换二进制，装进已有的 pi 或 DeepSeek Harness（见下文安装）。
 
 ## 它是什么
 
@@ -318,6 +356,10 @@ Persisto Mate 是 [pi](https://github.com/earendil-works/pi)（最小化的自�
 - **用你的语言思考。** 首次启动问你要 中文 还是 English；所有内在界面——状态、想法、冲动、引导——都用所选语言书写，不是想完再翻。
 
 ## 安装 Persisto Mate
+
+同一颗内核，三种宿主。每个宿主有自己的状态目录——不同的宿主就是不同的身体——但内核、记忆格式和行为完全一致。
+
+### 1. 伴侣本体——`mate` 命令
 
 **一行命令安装（自动把 `mate` 加进 PATH，不需要管理员权限，也不需要 Node）：**
 
@@ -333,9 +375,9 @@ macOS / Linux：
 curl -fsSL https://raw.githubusercontent.com/m-rui001/Persisto-Mate/main/scripts/install.sh | bash
 ```
 
-然后新开一个终端，直接输入 `mate`。手动方式：到 [release 页面](https://github.com/m-rui001/Persisto-Mate/releases/tag/v1.1.1-mate) 下载对应平台的压缩包——Windows 下 `mate-windows-x64.zip` / `mate-windows-arm64.zip`（解压后运行 `mate.exe`），Linux / macOS 下 `mate-linux-x64.tar.gz`、`mate-darwin-arm64.tar.gz` 等（`tar -xzf` 解压后运行 `mate/mate`）。macOS 若被 Gatekeeper 拦截：`xattr -d com.apple.quarantine mate`。配置在 `~/.mate`（可用 `MATE_CODING_AGENT_DIR` 覆盖）；首次启动会询问伴侣用什么语言思考和说话。第三方扩展如果通过 `PI_CODING_AGENT_DIR` 定位配置，会自动桥接到同一个目录；把 `~/.pi` 写死在自己默认值里的扩展仍需手动指过来。
+然后新开一个终端，直接输入 `mate`。手动方式：到 [release 页面](https://github.com/m-rui001/Persisto-Mate/releases/tag/v1.3.0-mate) 下载对应平台的压缩包——Windows 下 `mate-windows-x64.zip` / `mate-windows-arm64.zip`（解压后运行 `mate.exe`），Linux / macOS 下 `mate-linux-x64.tar.gz`、`mate-darwin-arm64.tar.gz` 等（`tar -xzf` 解压后运行 `mate/mate`）。macOS 若被 Gatekeeper 拦截：`xattr -d com.apple.quarantine mate`。配置和模型访问都在 `~/.pi`——和原版 pi 共用的同一个目录，models.json、auth、会话全部共享（可用 `MATE_CODING_AGENT_DIR` 覆盖）；首次启动会询问伴侣用什么语言思考和说话。`mate` 不带参数会自动续上最近一次会话，`--new` 开新会话。
 
-**更新：** 重跑同一条一行安装命令即可。脚本会先自动关闭正在运行的 mate（Windows 会锁住它加载的原生模块），原地替换安装，`~/.mate` 里的东西全部保留。
+**更新：** 重跑同一条一行安装命令即可。脚本会先自动关闭正在运行的 mate（Windows 会锁住它加载的原生模块），原地替换安装，`~/.pi` 里的东西全部保留。
 
 **卸载：**
 
@@ -347,7 +389,7 @@ iwr https://raw.githubusercontent.com/m-rui001/Persisto-Mate/main/scripts/uninst
 curl -fsSL https://raw.githubusercontent.com/m-rui001/Persisto-Mate/main/scripts/uninstall.sh | bash
 ```
 
-卸载会移除程序本体和 PATH 项；伴侣的状态和记忆在 `~/.mate` 里，默认保留——想彻底删除就自己删掉那个目录。
+卸载会移除程序本体和 PATH 项；伴侣的状态和记忆在 `~/.pi/agent/mate` 里，默认保留——想彻底删除就自己删掉那个目录。
 
 **从源码构建：** 需要 Node >= 22.19。每一行都是一条独立命令（不要把注释复制进命令行，cmd.exe 不把 `#` 当注释）。
 
@@ -371,7 +413,31 @@ cd packages/coding-agent
 node dist/bundle/cli.js
 ```
 
-`mate` 把状态持久化在 `~/.mate/agent/mate/` 下，你可以用 `MATE_CODING_AGENT_DIR` 移动它。同样的命令在 Windows cmd.exe 里也能用（`cd packages\coding-agent`，然后 `node dist\bundle\cli.js`）；`npm link` 在你的 npm 前缀目录下会生成 `mate.cmd`。
+`mate` 把状态持久化在 `~/.pi/agent/mate/` 下，你可以用 `MATE_CODING_AGENT_DIR` 移动它。同样的命令在 Windows cmd.exe 里也能用（`cd packages\coding-agent`，然后 `node dist\bundle\cli.js`）；`npm link` 在你的 npm 前缀目录下会生成 `mate.cmd`。
+
+### 2. 装进任意 pi——扩展形态
+
+如果你已经在用原版 pi，不必换二进制：把伴侣作为扩展装进现有的 pi，同一颗内核、同一套工具，就在你现在的会话里：
+
+```bash
+pi install git:github.com/m-rui001/pi-mate-companion
+# 或者从 npm：
+pi install npm:@m-rui/pi-mate-companion
+```
+
+状态落在 `~/.pi/agent/mate`（pi 的 agent 目录），所以扩展和 `mate` 二进制指向同一个家时，看到的是同一个伴侣。在原版 pi 上，判定模型需在 `settings.json` 手动配置（`"mate": {"judgeModel": "..."}`），`/judge` 命令会降级为提示你手改。详见[扩展的 README](https://github.com/m-rui001/pi-mate-companion)。
+
+### 3. 装进 DeepSeek Harness——bundle 形态
+
+[dsh](https://github.com/deepseek-ai/deepseek-harness)（alpha）上，把伴侣作为 bundle 装进一个 profile：
+
+```bash
+dsh plugin --profile <你的profile> add github:m-rui001/dsh-mate-companion
+# 或者从 npm：
+dsh plugin --profile <你的profile> add @m-rui/dsh-mate-companion
+```
+
+状态在 harness 主目录旁（`$DSH_HOME` 或 `~/.dsh`）的 `agent/mate`。dsh 目前没有给插件的旁路模型调用 API，所以那里的判定由宿主模型通过 `mate_feel` 工具自报——数学相同，自评代替外读。范围限制详见 [bundle 的 README](https://github.com/m-rui001/dsh-mate-companion)。
 
 ## 它如何工作
 
@@ -391,7 +457,7 @@ Persisto Mate 是一个个人研究分支，不是维护中的产品。有些缺
 
 ### 信任边界（为什么 Persisto Mate 是有意“不安全”的）
 
-Persisto Mate 本地运行，处于启动者的安全边界之内，没有权限系统，也没有沙箱。它把本地用户账户——以及该账户能写的一切——都视为和进程自身同处一个信任边界：`~/.mate`、工作区文件、`AGENTS.md`、技能、扩展、shell 启动脚本。任何能改这些的东西都能影响伴侣的行为。这是本地代理的预期行为，不是漏洞。如果你需要更硬的边界，把它容器化或沙箱化；上游已经在 [`packages/coding-agent/docs/containerization.md`](packages/coding-agent/docs/containerization.md) 中记录了模式。
+Persisto Mate 本地运行，处于启动者的安全边界之内，没有权限系统，也没有沙箱。它把本地用户账户——以及该账户能写的一切——都视为和进程自身同处一个信任边界：`~/.pi`、工作区文件、`AGENTS.md`、技能、扩展、shell 启动脚本。任何能改这些的东西都能影响伴侣的行为。这是本地代理的预期行为，不是漏洞。如果你需要更硬的边界，把它容器化或沙箱化；上游已经在 [`packages/coding-agent/docs/containerization.md`](packages/coding-agent/docs/containerization.md) 中记录了模式。
 
 两个伴侣特有的能力也是有意的：`look` 无开关、无确认地截屏；私密念头不加密地进记忆图——旧的加密“密封自我”的隐藏边界是幻象（界面点一下就能看到隐藏的想法，模型也能读自己的文件），所以私密笔记现在只是用户看不到渲染内容的普通记忆。
 
