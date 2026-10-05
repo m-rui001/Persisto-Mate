@@ -1,0 +1,25 @@
+{
+	"name": "@m-rui/dsh-mate-companion",
+	"version": "0.2.0",
+	"description": "Persisto Mate companion as a DeepSeek Harness (dsh) bundle: a learned body clock, real offline sleep, its own memory and feelings.",
+	"type": "module",
+	"license": "MIT",
+	"private": true,
+	"main": "./dist/index.js",
+	"files": [
+		"dist",
+		"cordis.patch.yml",
+		"README.md"
+	],
+	"dsh": {
+		"bundle": {
+			"patch": "./cordis.patch.yml"
+		}
+	},
+	"scripts": {
+		"build": "node scripts/build.mjs"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-mate": "*"
+	}
+}
