@@ -804,15 +804,6 @@ export class SettingsManager {
 		this.save();
 	}
 
-	/** Merge one extension's settings section into global settings and persist. The single write path
-	 * extension commands use to configure themselves (e.g. /judge writing `mate.judgeModel`) — the
-	 * user never edits settings.json by hand. */
-	updateMate(value: Partial<MateSettings>): void {
-		this.globalSettings.mate = { ...(this.globalSettings.mate ?? {}), ...value };
-		this.markModified("mate");
-		this.save();
-	}
-
 	getSessionDir(): string | undefined {
 		const sessionDir = this.settings.sessionDir;
 		return sessionDir ? normalizePath(sessionDir) : sessionDir;

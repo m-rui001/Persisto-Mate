@@ -1737,10 +1737,6 @@ export interface ExtensionAPI {
 	/** Get a copy of the effective settings (global and project settings merged, with overrides). */
 	getSettings(): Settings;
 
-	/** Merge values into the companion extension's settings section and persist. The write path
-	 * /judge uses, so the user never edits settings.json by hand. */
-	updateMateSettings(value: { judgeModel?: string }): void;
-
 	/**
 	 * Set the active tools by name. Unknown and `hidden` tools are ignored. Tools with `codemode` or
 	 * `deferred` exposure stay callable from codemode scripts whether active or not.
@@ -2100,10 +2096,6 @@ export type GetAllToolsHandler = () => ToolInfo[];
 
 export type GetSettingsHandler = () => Settings;
 
-/** Merge one extension's settings section into global settings (persisted). The write path
- * extension commands use to configure themselves, so the user never edits settings.json. */
-export type UpdateMateSettingsHandler = (value: { judgeModel?: string }) => void;
-
 export type GetCommandsHandler = () => SlashCommandInfo[];
 
 export type SetActiveToolsHandler = (toolNames: string[]) => void;
@@ -2167,7 +2159,6 @@ export interface ExtensionActions {
 	getActiveTools: GetActiveToolsHandler;
 	getAllTools: GetAllToolsHandler;
 	getSettings: GetSettingsHandler;
-	updateMateSettings: UpdateMateSettingsHandler;
 	setActiveTools: SetActiveToolsHandler;
 	refreshTools: RefreshToolsHandler;
 	getCommands: GetCommandsHandler;
