@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-05
+
+### Changed
+
+- No kernel changes in this cycle; version alignment with the v1.3.0-mate plugin release. The companion's state dir now resolves under the host's agent dir (`~/.pi/agent/mate`) instead of the fork's old `~/.mate/agent/mate` — the `store.ts` API is unchanged, the move is a host-side migration.
+
 ## [1.2.1] - 2026-10-05
 
 ### Changed

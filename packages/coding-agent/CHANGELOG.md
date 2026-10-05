@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-05
+
 ### Changed
 
 - **The agent home is now the standard `~/.pi`.** The fork no longer owns a top-level `.mate` config dir: the agent dir, project config dir (`.pi/`), sessions, models.json, auth.json and the companion's own state all live where every other pi distribution puts them, so mate and a stock pi share one configuration. A one-time migration on startup folds an existing `~/.mate/agent` into `~/.pi/agent` (target files win conflicts; leftovers survive under `~/.mate` for a manual merge).
