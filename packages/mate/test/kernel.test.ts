@@ -13,6 +13,7 @@ import {
 	netEmotions,
 	padCentre,
 	padCentreFromRho,
+	sleepTransition,
 	transition,
 	wakeDrive,
 } from "../src/kernel.ts";
@@ -421,5 +422,57 @@ describe("learned bio-clock", () => {
 		expect(drowsinessOf(awake, atHour(3))).toBeLessThan(1);
 		// In its learned valley the floor is low and the gate is open.
 		expect(drowsinessOf(awake, atHour(15))).toBe(1);
+	});
+});
+
+/**
+ * Drive discharge paths. A drive that can never fall is not a drive: curiosity had no satisfaction
+ * source anywhere, and growth's rode a `sleep` event that no code ever emitted — both only rose,
+ * pinning at ~1.0. Every discharge below reuses the existing discharge scale.
+ */
+describe("drive discharge paths", () => {
+	const HOUR = 3_600_000;
+
+	it("an appraisal that taught the companion something discharges curiosity; a flat one does not", () => {
+		const s0 = birth({ seed: 61, born: 0 });
+		const hungry = { ...s0, drives: { ...s0.drives, curiosity: 0.9 } };
+		// A "nothing moved" reading carries no information: the information-gap (Loewenstein 1994)
+		// stays open, so curiosity keeps its rise and loses nothing.
+		const flat = transition(hungry, { kind: "appraisal", activations: {}, intent: "chat", t: s0.t + HOUR }, HOUR);
+		expect(flat.state.drives.curiosity).toBeGreaterThan(0.89);
+		// A reading that moved the state taught it something: the gap closes.
+		const moving = transition(
+			hungry,
+			{ kind: "appraisal", activations: { joy: 1 }, intent: "chat", t: s0.t + HOUR },
+			HOUR,
+		);
+		expect(moving.state.drives.curiosity).toBeLessThan(0.4);
+	});
+
+	it("consolidating a thought (remember/ponder with a subject) also discharges curiosity", () => {
+		const s0 = birth({ seed: 63, born: 0 });
+		const hungry = { ...s0, drives: { ...s0.drives, curiosity: 0.8 } };
+		const after = transition(
+			hungry,
+			{ kind: "self_observation", activations: {}, intent: "chat", topics: ["面试"], t: s0.t + HOUR },
+			HOUR,
+		);
+		expect(after.state.drives.curiosity).toBeLessThan(0.6);
+	});
+
+	it("a task exchange discharges growth; a chat message does not", () => {
+		const s0 = birth({ seed: 67, born: 0 });
+		const task = transition(s0, { kind: "user_message", activations: {}, intent: "task", t: s0.t + HOUR }, HOUR);
+		const chat = transition(s0, { kind: "user_message", activations: {}, intent: "chat", t: s0.t + HOUR }, HOUR);
+		expect(task.state.drives.growth).toBeLessThan(0.15);
+		expect(chat.state.drives.growth).toBeGreaterThan(s0.drives.growth);
+	});
+
+	it("sleep discharges growth directly — the path sleep actually takes (sleepTransition, not an event)", () => {
+		const s0 = birth({ seed: 71, born: 0 });
+		const tired = { ...s0, drives: { ...s0.drives, growth: 0.9, rest: 1 } };
+		const slept = sleepTransition(tired, s0.t + 8 * HOUR, { lived: false });
+		expect(slept.drives.growth).toBeCloseTo(0.63, 5);
+		expect(slept.drives.rest).toBe(0);
 	});
 });

@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`/judge`**: pick the affect-judge model from the terminal (`/judge` opens a selector over the registry, `/judge provider/id` sets one directly, `/judge off` clears it). It writes the new `mate` settings section through the host (`SettingsManager.updateMate`, exposed as `pi.updateMateSettings` on the extension API) — the user never edits settings.json by hand, the same shape as `/model` and `/login`.
+- **`/debug`** (mate extension): the developer view of the companion's full internal state — every number the model-facing block tiers away, plus habituation traces, awareness, allostasis and counters.
+- **First-run tutorial**: a brand-new companion teaches the few commands that matter (`/model`, `/language`, `/mate`, `/debug`, `/judge`, `/changelog`) right after the language picker, in the language just chosen.
+
+### Changed
+
+- **Custom messages are enveloped as harness events.** `convertToLlm` now wraps every custom message in `<system-event type="..."> - a harness event, not the user: ... </system-event>` (the same pattern as the compaction/branch summary prefixes). Without it the model received its own sleep event, impulse or alarm as a bare user turn — which is how a companion read its own drowsiness as the user's and said goodnight to them. The sleep-farewell text is unchanged; the channel does the attribution now.
+- **No changelog at startup.** The version marker still advances and install telemetry still fires, but nothing prints; release notes live behind `/changelog`. The startup surface belongs to the companion (and the first-run tutorial).
+- The package-update notice is one dim line instead of a bordered warning block.
+
 ## [1.1.1] - 2026-10-04
 
 ### Added

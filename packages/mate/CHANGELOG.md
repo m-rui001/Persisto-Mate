@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Added
+
+- Drive satisfaction paths for the two drives that had none, so every drive can now actually fall (a drive that only rises is a leak, not a drive): `curiosity` is discharged by the measured surprise of an appraisal and by consolidating a thought with a subject (Loewenstein 1994's information-gap theory — a gap is closed by acquiring the missing information), and `growth` by task exchanges (White 1959 effectance; Deci & Ryan 2000 competence) and by `sleepTransition` directly (the old `sleep` event that carried its discharge was never emitted by any code, so the branch was dead). Every discharge magnitude reuses the existing discharge scale; no new constants.
+- `kernel.convictionFloor()`, and `tick()` now returns `think_only` ("faint-pull") when a proactive impulse's urgency sits below it: a faint pull stays inner life instead of firing a turn. The same formula `preSendReview` already surfaced as an advisory — no new threshold.
+- `context.debugView(state, now)`: the developer view behind `/debug` — every number the model-facing block tiers away, plus habituation traces, awareness, allostasis and counters.
+- The volatile `<mate>` state block opens with a one-line attribution ("your inner state, not the user's words"), because the block rides the newest message and that is the point of misreading.
+
+### Changed
+
+- The affect judge's magnitude mapping is now anchored to published results instead of a bare gain (see judge.ts header note 4): the -2..+2 ladder is read as equal-interval rungs (Likert 1932; Thurstone 1927's comparative judgment), a fall weighs twice a rise (Baumeister et al. 2001's "bad is stronger than good"; Rozin & Royzman 2001 place the ratio near 2:1 — `JUDGE_NEGATIVITY_BIAS`, the negative cap stays `JUDGE_GAIN`), and a classifier channel's activation is attenuated by its confidence (Spearman 1904's attenuation logic). `judgeActivations()` takes an optional confidence map; `classifyReading` supplies it.
+- Both judge question forms now force the reader's perspective: a feeling the USER expressed moves the companion's channel only if the transcript shows the companion itself was moved — the mirroring failure (user's frustration read as the companion's anger) is the one contamination an outside reader exists to prevent.
+- The model-facing state block is tiered (name-don't-number, as its own header always claimed): drives appear only past their band and as short prose clauses (band line 0.6, the urge threshold `generateThoughts` already gates with; rest tiers on `drowsinessOf`), emotions render as bare names in magnitude order, and the mood PAD triple, the impulse-line floats and the inclination value moved to `/debug`. Frustration becomes a word past its tiers (0.2 display floor, 0.5 cold-ending gate). The relationship and self anchors keep their numbers.
+- An impulse that gets voiced saturates its topic's habituation trace (Groves & Thompson 1970: a habituated stimulus does not immediately re-elicit), so a voiced thought stops feeding straight back as the next impulse; the next thought call's hints also exclude the just-voiced text.
+- `openSession(log, t, sealUnclosedAt?)`: an unclean exit's open mark is sealed at the state's last-alive time (bounded to the entry's lifetime) instead of the next boot — sealing a whole night's absence against the next open's clock is what recorded a full night as a seconds-long phantom session.
+- The `sleep`/`wake` event kinds are removed from `MateEvent`: nothing emitted them, and sleep reaches the kernel through `sleepTransition()`.
+
 ## [1.1.1] - 2026-10-04
 
 ### Added

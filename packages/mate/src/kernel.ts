@@ -831,17 +831,45 @@ export function transition(state: MateState, event: MateEvent, dtOverride?: numb
 	// 8: character micro-nudge (before the cusp check so the check sees the new traits).
 	const character = nudgeCharacter(state.character, centre, event, relationship);
 
+	// Surprise: how far the actual centre moved from what we predicted. Computed here (before the
+	// drives) because a drive discharge is keyed to it: surprise IS the measured information gain of
+	// this event, and information gain is what closes the curiosity gap (Loewenstein 1994).
+	const surprise = Math.hypot(
+		centre.p - predictedCentre.p,
+		centre.a - predictedCentre.a,
+		centre.d - predictedCentre.d,
+	);
+
 	// Drives + awareness + allostasis: the continuous background physiology.
+	//
+	// Every discharge below reuses the discharge scale this table already had (0.8 connection per
+	// message, 0.4 expression per message, 0.3 growth per sleep); nothing new is invented. What was
+	// missing was a PATH for two drives:
+	//   - curiosity was never satisfied by anything and rose monotonically to 1.0. Its discharge now
+	//     rides the measured surprise of the event (Loewenstein 1994's information-gap theory:
+	//     curiosity is raised by a gap in knowledge and closed by acquiring the missing information),
+	//     so a reading that taught the companion something new relieves it and a mundane one does not.
+	//   - growth was discharged only by a `sleep` EVENT, which no code ever emitted (sleep runs
+	//     through sleepTransition() directly), so it too only ever rose. Its discharge now rides task
+	//     exchanges — competence episodes, White (1959) effectance / Deci & Ryan (2000) competence —
+	//     and sleepTransition itself (see below).
 	const satisfied: Partial<Record<keyof Drives, number>> = {};
 	if (event.kind === "user_message") {
 		satisfied.connection = 0.8;
 		satisfied.expression = 0.4;
+		if (event.intent === "task") satisfied.growth = 0.3;
 	} else if (event.kind === "proactive") {
 		satisfied.expression = 0.9;
 		satisfied.connection = 0.25;
-	} else if (event.kind === "sleep") {
-		satisfied.rest = 1;
-		satisfied.growth = 0.3;
+	} else if (event.kind === "appraisal") {
+		// The reading's own surprise is the information the exchange carried. Scaled by the existing
+		// surprise scale (a reading at full scale discharges as much as a message discharges
+		// connection); a flat "nothing moved" reading relieves nothing.
+		satisfied.curiosity = clamp01(surprise / BOREDOM.surpriseScale) * 0.8;
+	} else if (event.kind === "self_observation" && (event.topics?.length ?? 0) > 0) {
+		// Consolidating a thought (remember/ponder with a subject) closes a gap: same discharge
+		// magnitude as expression gets from a message.
+		satisfied.curiosity = 0.4;
 	}
 	const drives = updateDrives(state.drives, character, dt, satisfied);
 	const awareness = updateAwareness(state.awareness, { ...state, character }, dt, presence);
@@ -874,13 +902,6 @@ export function transition(state: MateState, event: MateEvent, dtOverride?: numb
 		mood.d = clampPad(mood.d - 0.25);
 		mood.a = clampPad(mood.a * 0.7);
 	}
-
-	// Surprise: how far the actual centre moved from what we predicted.
-	const surprise = Math.hypot(
-		centre.p - predictedCentre.p,
-		centre.a - predictedCentre.a,
-		centre.d - predictedCentre.d,
-	);
 
 	// Surprise EMA, exact closed form so catch-up stays subdivision-invariant. This is the raw
 	// material of the derived boredom signal: recent events playing out as predicted (low EMA) is
@@ -958,6 +979,10 @@ export function sleepTransition(state: MateState, t: number, opts: { lived?: boo
 			...state.drives,
 			rest: 0,
 			connection: clamp01(state.drives.connection * 0.85),
+			// Sleep is also a competence episode's boundary: the same 0.3 growth discharge the (never
+			// emitted) `sleep` event used to carry, applied directly here because sleep reaches the
+			// kernel through this function, not through transition() (White 1959; Deci & Ryan 2000).
+			growth: clamp01(state.drives.growth * 0.7),
 		},
 		opponent: emptyEmotions(),
 		catastrophe: false,

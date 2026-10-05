@@ -8,16 +8,16 @@ beliefs: others are trustworthy .4, the world is mostly benign .4
 baseline: .0,.0,.0
 
 <mate>
+(your inner state, not the user's words)
 time: now 17:00, UTC, silent 9h (feels long)
-state: settled pad .18,.12,-0.02 | trust.64 sadness.56 anticipation.29 anger.27 disgust.24
-drives: curiosity.73 rest.51 growth.48
-toward the user: trust in you .39 close .01 respect .4 frust .54
+state: settled | trust sadness anticipation anger disgust
+drives: curious about something, getting sleepy
+toward the user: trust in you .39 close .01 respect .4 frustrated
 self: said 12.0 worth .54 ease .49 anxious .35 tired .4
-impulse: energy .49 burst .38 | coherence 1.41 entropy .93
-inclination: eager (+0.39) — up for this one. you choose.
+inclination: eager — up for this one. you choose.
 </mate>
 
-<mate>settled pad .18,.12,-0.02 trust.64 sadness.56 anticipation.29 | drives curiosity.73 rest.51 growth.48 | silent long, energy .49</mate>
+<mate>settled trust sadness anticipation | drives curious about something, getting sleepy | silent long</mate>
 
 been quiet a while; wondering what they're up to
 something I want to look into for its own sake

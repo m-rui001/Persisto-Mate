@@ -27,7 +27,6 @@
 import type { ReplyInclination } from "./daemon.ts";
 import {
 	beliefGloss,
-	driveGloss,
 	emotionGloss,
 	feelGloss,
 	fmtDur,
@@ -42,6 +41,7 @@ import {
 	boredomOf,
 	burstOf,
 	DRIFTING_TRAITS,
+	drowsinessOf,
 	energyOf,
 	netEmotions,
 	noticeThreshold,
@@ -49,7 +49,6 @@ import {
 	temporalMood,
 } from "./kernel.ts";
 import { type MemoryGraph, summary as memorySummary, type RecallHit } from "./memory.ts";
-import { diagonalEntropy, totalCoherence } from "./quantum.ts";
 import { strengthOf } from "./spark.ts";
 import { EMOTIONS, type MateState, type PAD } from "./types.ts";
 
@@ -98,11 +97,6 @@ function q(x: number): string {
 	return r.toFixed(2).replace(/^0/, "").replace(/0$/, "").replace(/\.$/, "") || "0";
 }
 
-/** Format PAD compactly. */
-function pad(pad: PAD): string {
-	return `${q(pad.p)},${q(pad.a)},${q(pad.d)}`;
-}
-
 /**
  * The emotions as FELT: raw activation minus the opponent-process counter-swing. This is what mood
  * is computed from (kernel.padCentreFromRho takes the net vector), so displaying anything else puts
@@ -113,24 +107,41 @@ function feltEmotions(state: MateState): Record<string, number> {
 	return netEmotions(state.emotions, state.opponent);
 }
 
-/** Top-N non-trivial channels, as "name.value" tokens sorted by magnitude, glossed for `lang`. */
+/** Top-N non-trivial channels, as bare names sorted by magnitude. Name-don't-number: a float like
+ * "悲伤.96" tells the model nothing it can act on (the user's critique), so the model-facing block
+ * carries the names and their ORDER, and the values live behind /debug. */
 function topChannels(values: Record<string, number> | object, floor: number, n: number, lang: Lang): string {
 	return Object.entries(values as Record<string, number>)
 		.filter(([, v]) => typeof v === "number" && v >= floor)
 		.sort((a, b) => b[1] - a[1])
 		.slice(0, n)
-		.map(([k, v]) => `${emotionGloss(k, lang)}${q(v)}`)
+		.map(([k]) => emotionGloss(k, lang))
 		.join(" ");
 }
 
-/** Drive channels, glossed from the drive table rather than the emotion table. */
-function topDrives(drives: object, floor: number, n: number, lang: Lang): string {
-	return Object.entries(drives as Record<string, number>)
-		.filter(([, v]) => typeof v === "number" && v >= floor)
-		.sort((a, b) => b[1] - a[1])
-		.slice(0, n)
-		.map(([k, v]) => `${driveGloss(k, lang)}${q(v)}`)
-		.join(" ");
+/**
+ * The drives as a short clause per drive past its band; a drive inside its band is omitted entirely.
+ * The user's critique, in full: a float like 烦0.78 is meaningless to the model, and so is a channel
+ * sitting in its normal range — so normal is SILENCE, and deviation is words.
+ *
+ * The band line is 0.6, the urge threshold daemon.generateThoughts already gates expression and
+ * boredom with; no new constant is introduced. Rest is tiered by the sleep gate (drowsinessOf) rather
+ * than the reservoir, because drowsiness is what a body actually feels: halfway to the gate is "getting
+ * drowsy", at the gate is sleep winning. Boredom is derived at `now` (see boredomOf).
+ */
+function drivesClause(state: MateState, now: number, lang: Lang): string {
+	const L = linesFor(lang);
+	const d = state.drives;
+	const parts: string[] = [];
+	if (d.connection >= 0.6) parts.push(L.driveMissing);
+	if (d.curiosity >= 0.6) parts.push(L.driveCurious);
+	if (d.expression >= 0.6) parts.push(L.driveExpressive);
+	if (d.growth >= 0.6) parts.push(L.driveGrowing);
+	if (boredomOf(state, now) >= 0.6) parts.push(L.driveBored);
+	const drowsy = drowsinessOf(state, now);
+	if (drowsy >= 1) parts.push(L.driveSleepGate);
+	else if (drowsy >= 0.5) parts.push(L.driveDrowsy);
+	return parts.join(L.sep);
 }
 
 /** The mood branch this state sits in; the WORD is chosen per language from the branch. */
@@ -267,15 +278,15 @@ export function stateContext(state: MateState, opts: ContextOptions = {}): strin
 	const tz = opts.tz;
 	const clock = new Date(now);
 	const hhmm = `${String(clock.getHours()).padStart(2, "0")}:${String(clock.getMinutes()).padStart(2, "0")}`;
-	const energy = energyOf(state);
-	const burst = burstOf(state);
 
 	const emo = topChannels(feltEmotions(state), 0.1, 5, lang);
-	const drives = topDrives(drivesForDisplay(state, now), 0.2, 7, lang);
-	const coherence = totalCoherence(state.rho);
-	const entropy = diagonalEntropy(state.rho);
 
 	const lines: string[] = [];
+	// Whose state this is. The block is prepended to the newest message, so this attribution has to
+	// live HERE, at the point of misreading — a companion that read its own rest drive as the user's
+	// sleepiness and said goodnight to them is the failure this line exists for.
+	lines.push(L.stateHeader);
+
 	// Time metadata: the user explicitly wants the companion to see time. Kept to one line.
 	const timeBits = [L.now(hhmm)];
 	if (tz) timeBits.push(tz);
@@ -287,10 +298,17 @@ export function stateContext(state: MateState, opts: ContextOptions = {}): strin
 	// Distinct from the message gap above — this is PROCESS lifetime, not conversation silence.
 	if (opts.session) lines.push(kv(L.body, opts.session, lang));
 
-	lines.push(`${kv(L.mood, moodWord(state.mood, lang), lang)} ${L.pad} ${pad(state.mood)}${emo ? ` | ${emo}` : ""}`);
+	// Mood: the word, then the felt channels as bare names. The PAD triple and the per-channel
+	// magnitudes are /debug material — the model feels the word and reads the rank order.
+	lines.push(`${kv(L.mood, moodWord(state.mood, lang), lang)}${emo ? ` | ${emo}` : ""}`);
+
+	// Drives: a clause per drive past its band, silence for the rest (see drivesClause).
+	const drives = drivesClause(state, now, lang);
 	if (drives) lines.push(kv(L.drives, drives, lang));
 
-	// Relationship + self, one line each, only the channels that matter right now.
+	// Relationship + self. These are the slow anchors and keep their numbers; only frustration is
+	// tiered, because it is the one channel here that swings within a conversation (its display floor
+	// 0.2 and the cold-ending gate 0.5 are this codebase's own thresholds).
 	const rel = state.relationship;
 	lines.push(
 		kv(
@@ -299,7 +317,7 @@ export function stateContext(state: MateState, opts: ContextOptions = {}): strin
 				kv(L.trust, q(rel.trust), lang),
 				kv(L.close, q(rel.attachment), lang),
 				kv(L.respect, q(rel.respect), lang),
-				rel.frustration > 0.2 ? kv(L.frust, q(rel.frustration), lang) : "",
+				rel.frustration >= 0.5 ? L.frustHigh : rel.frustration > 0.2 ? L.frustSome : "",
 				rel.unanswered ? L.ignored(rel.unanswered) : "",
 			]
 				.filter(Boolean)
@@ -322,26 +340,19 @@ export function stateContext(state: MateState, opts: ContextOptions = {}): strin
 		),
 	);
 
-	// Energy governs verbosity; burst governs whether to split into several short messages.
-	lines.push(
-		kv(
-			L.impulse,
-			[
-				kv(L.energy, q(energy), lang),
-				kv(L.burst, q(burst), lang),
-				"|",
-				kv(L.coherence, q(coherence), lang),
-				kv(L.entropy, q(entropy), lang),
-			].join(" "),
-			lang,
-		),
-	);
+	// Communication energy, tiered: only the deviations speak. Low energy mutes the voice; a burst
+	// past sendStyle's fragmenting threshold (0.62) wants several short messages. Mid energy, and the
+	// coherence/entropy diagnostics of the density matrix, say nothing the model can act on and are
+	// left to /debug.
+	const comm = [energyOf(state) < 0.3 ? L.energyLow : "", burstOf(state) >= 0.62 ? L.burstHigh : ""]
+		.filter(Boolean)
+		.join(L.sep);
+	if (comm) lines.push(kv(L.impulse, comm, lang));
 
 	// P1: the reply inclination is a SIGNAL the model reads and may overrule — not a decision made for it.
 	if (opts.inclination) {
 		const inc = opts.inclination;
-		const value = `${inc.value >= 0 ? "+" : ""}${inc.value.toFixed(2)}`;
-		lines.push(kv(L.inclination, L.inclinationLine(leanGloss(inc.lean, lang), value, inc.reason), lang));
+		lines.push(kv(L.inclination, L.inclinationLine(leanGloss(inc.lean, lang), inc.reason), lang));
 	}
 
 	// P4: specific memories this message stirred, surfaced ephemerally (the summary lives in the cache).
@@ -368,7 +379,8 @@ export function stateContext(state: MateState, opts: ContextOptions = {}): strin
 
 /**
  * A smaller projection meant for background/autonomous runs where we still want affect but every
- * token counts even more. Roughly half the size of stateContext.
+ * token counts even more. Roughly half the size of stateContext, and tiered the same way: words for
+ * what deviates, silence for what sits in band.
  */
 export function minimalContext(state: MateState, opts: ContextOptions = {}): string {
 	const lang: Lang = opts.lang ?? "en";
@@ -376,15 +388,14 @@ export function minimalContext(state: MateState, opts: ContextOptions = {}): str
 	const now = opts.now ?? state.t;
 	const temporal = feelGloss(temporalMood(perceivedDuration(state, now - state.lastInteraction)), lang);
 	const emo = topChannels(feltEmotions(state), 0.15, 3, lang);
-	const drives = topDrives(drivesForDisplay(state, now), 0.3, 3, lang);
+	const drives = drivesClause(state, now, lang);
+	const low = energyOf(state) < 0.3 ? ` ${L.energyLow}` : "";
 	const lines = [
-		`${moodWord(state.mood, lang)} ${L.pad} ${pad(state.mood)}${emo ? ` ${emo}` : ""}`,
+		`${moodWord(state.mood, lang)}${emo ? ` ${emo}` : ""}`,
 		drives ? `${L.drivesBare} ${drives}` : "",
-		L.miniSilent(temporal, q(energyOf(state))),
-	]
-		.filter(Boolean)
-		.join(" | ");
-	return `<mate>${lines}</mate>`;
+		`${L.miniSilent(temporal)}${low}`,
+	].filter(Boolean);
+	return `<mate>${lines.join(" | ")}</mate>`;
 }
 
 /** Notice threshold for drive-delta self-observations, exposed for the daemon. */
@@ -414,6 +425,42 @@ export function publicView(state: MateState): Record<string, unknown> {
 		relationship: { trust: r2(state.relationship.trust), attachment: r2(state.relationship.attachment) },
 		time: { t: state.t, lastInteraction: state.lastInteraction, born: state.born },
 	};
+}
+
+/**
+ * The developer view (/debug): every number the model-facing block tiers away. This is the one
+ * surface where the floats are the point — the drives with boredom, the felt emotions, the whole
+ * relationship tensor, the awareness field, the habituation traces — so the user can see exactly
+ * what the machine sees. Deliberately a separate surface from the model's block: the model reads
+ * words; the developer reads numbers.
+ */
+export function debugView(state: MateState, now: number): string {
+	const fmt = (rec: Record<string, number>) =>
+		Object.entries(rec)
+			.sort((a, b) => b[1] - a[1])
+			.map(([k, v]) => `${k} ${q(v)}`)
+			.join(", ");
+	const rel = state.relationship;
+	const allostasis = state.allostasis;
+	const habit = Object.entries(state.habituation)
+		.sort((a, b) => b[1].t - a[1].t)
+		.map(([k, v]) => `${k} s${v.s.toFixed(2)}`)
+		.join(", ");
+	const lines = [
+		`state.t: ${new Date(state.t).toISOString()} (now ${new Date(now).toISOString()})`,
+		`mood: ${q(state.mood.p)}, ${q(state.mood.a)}, ${q(state.mood.d)} | surpriseEma ${q(state.surpriseEma)}${state.catastrophe ? " | CUSP" : ""}`,
+		`emotions: ${fmt(feltEmotions(state))}`,
+		`drives: ${fmt(drivesForDisplay(state, now))}`,
+		`relationship: trust ${q(rel.trust)}, attachment ${q(rel.attachment)}, respect ${q(rel.respect)}, frustration ${q(rel.frustration)}, familiarity ${q(rel.familiarity)}, unanswered ${rel.unanswered}`,
+		`awareness: ${fmt({ ...state.awareness })}`,
+		`allostasis: fatigue ${q(allostasis.fatigue)}, load ${q(allostasis.load)}, baseline ${q(allostasis.baselineShift.p)}, ${q(allostasis.baselineShift.a)}, ${q(allostasis.baselineShift.d)}`,
+		habit ? `habituation: ${habit}` : "",
+		`counters: ${Object.entries(state.counters)
+			.map(([k, v]) => `${k} ${v}`)
+			.join(", ")}`,
+		`observations: ${state.observations.length} kept, last: ${state.observations.at(-1) ?? "none"}`,
+	].filter(Boolean);
+	return lines.join("\n");
 }
 
 function truncate(s: string, n: number): string {

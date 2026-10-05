@@ -89,6 +89,7 @@ describe("ExtensionRunner", () => {
 		getActiveTools: () => [],
 		getAllTools: () => [],
 		getSettings: () => ({}),
+		updateMateSettings: () => {},
 		setActiveTools: () => {},
 		refreshTools: () => {},
 		getCommands: () => [],

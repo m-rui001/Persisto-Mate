@@ -174,12 +174,13 @@ export function judgeTurns(ctx: ExtensionContext, thinking: boolean): JudgeTurn[
 	return out;
 }
 
-/** Tier 1: eight score questions, one answer per channel, no text to read back. */
+/** Tier 1: eight score questions, one answer per channel, no text to read back. Also returns the
+ *  per-channel confidences, which attenuate the activation (see judge.judgeActivations). */
 async function classifyReading(
 	ctx: ExtensionContext,
 	model: ClassifierModel<ClassifierApi>,
 	transcript: string,
-): Promise<Partial<Record<Emotion, number>>> {
+): Promise<{ deltas: Partial<Record<Emotion, number>>; confidences: Partial<Record<Emotion, number>> }> {
 	const result = await withinDeadline(
 		ctx.modelRegistry.classify(
 			model,
@@ -197,15 +198,23 @@ async function classifyReading(
 		const answer = result.answers[e];
 		if (answer?.type === "score") scores[e] = { score: answer.score, confidence: answer.confidence };
 	}
-	return judgeDeltasFromScores(scores);
+	const deltas = judgeDeltasFromScores(scores);
+	// The classifier reports its confidence per channel, and the activation is attenuated by it
+	// (Spearman 1904's attenuation logic): flat distributions are discounted, not trusted.
+	const confidences: Partial<Record<Emotion, number>> = {};
+	for (const e of EMOTIONS) {
+		if (deltas[e] !== undefined) confidences[e] = scores[e]?.confidence;
+	}
+	return { deltas, confidences };
 }
 
-/** Tiers 2 and 3: the same question as one JSON object from a chat model. */
+/** Tiers 2 and 3: the same question as one JSON object from a chat model. A chat model reports no
+ *  confidence, so its readings arrive unattenuated and the due gate carries the reliability burden. */
 async function chatReading(
 	ctx: ExtensionContext,
 	model: Model<Api>,
 	transcript: string,
-): Promise<Partial<Record<Emotion, number>>> {
+): Promise<{ deltas: Partial<Record<Emotion, number>>; confidences: Partial<Record<Emotion, number>> }> {
 	const reply = await withinDeadline(
 		ctx.modelRegistry.complete(
 			model,
@@ -223,7 +232,7 @@ async function chatReading(
 		.filter((p): p is { type: "text"; text: string } => p.type === "text")
 		.map((p) => p.text)
 		.join("");
-	return judgeDeltas(parseJudgeReply(text));
+	return { deltas: judgeDeltas(parseJudgeReply(text)), confidences: {} };
 }
 
 /**
@@ -283,13 +292,14 @@ export async function runAffectJudge(
 		if (window.filter((t) => t.role === "user").length === 0) return null;
 		const transcript = judgeTranscript(window);
 
-		const deltas =
+		const { deltas, confidences } =
 			reader.via === "classifier"
 				? await classifyReading(ctx, reader.model, transcript)
 				: await chatReading(ctx, reader.model, transcript);
 
-		// A full-scale reading is applied as half a channel (JUDGE_GAIN).
-		const activations = judgeActivations(deltas);
+		// Rung equating, the negativity asymmetry and confidence attenuation turn the ladder into
+		// kernel activations (see mate/judge.ts, header note 4).
+		const activations = judgeActivations(deltas, confidences);
 		rt.judgeRead(activations);
 		return {
 			via: reader.via,

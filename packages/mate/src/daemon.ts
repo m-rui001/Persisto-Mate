@@ -214,6 +214,17 @@ export interface PreSendReview {
 	reason: string;
 }
 
+/**
+ * The conviction floor: how strong a pull must be before it earns an INTERRUPT of the user.
+ * One formula, two uses: preSendReview surfaces it as an advisory note, and tick() uses it as the
+ * gate on firing a proactive turn. Below it an impulse stays inner life — a real impulse can be a
+ * smile, a note to self, or "算了不说了"; the thought is still recorded, and the model may voice it
+ * on its own next turn. Not a new constant: the same formula the review already used.
+ */
+export function convictionFloor(state: MateState): number {
+	return 0.45 - state.personality.e * 0.2 - state.character.impulsivity * 0.1;
+}
+
 export function preSendReview(
 	state: MateState,
 	thought: Thought,
@@ -273,7 +284,7 @@ export function preSendReview(
 	}
 
 	// Conviction floor as a nudge, not a gate.
-	const floor = 0.45 - p.e * 0.2 - ch.impulsivity * 0.1;
+	const floor = convictionFloor(state);
 	if (!checks.userActive && thought.urgency < floor) {
 		advisory.push(L.adFaintPull(thought.urgency.toFixed(2), floor.toFixed(2)));
 	}
@@ -324,6 +335,17 @@ export function tick(
 		// ride along so the model sees what it was weighing.
 		return {
 			decision: { action: "think_only", thought: top.thought, reason: review.blocked, advisory: review.advisory },
+			state: habituated,
+		};
+	}
+
+	// A faint pull does not earn an interrupt: the thought stays inner life (recorded via the
+	// habituation trace and the beat's thought) instead of prying the conversation open. This is the
+	// "算了不说了" branch — what was missing while every not-blocked impulse became a reach_out.
+	const floor = convictionFloor(state);
+	if (!checks.userActive && top.thought.urgency < floor) {
+		return {
+			decision: { action: "think_only", thought: top.thought, reason: "faint-pull", advisory: review.advisory },
 			state: habituated,
 		};
 	}

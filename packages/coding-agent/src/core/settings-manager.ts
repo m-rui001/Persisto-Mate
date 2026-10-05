@@ -186,6 +186,16 @@ export interface Settings {
 	fullscreenScrollbar?: ScrollViewScrollbar; // default: "auto"; no effect in regular TUI mode
 	fullscreenCopyOnSelect?: boolean; // default: true; no effect in regular TUI mode
 	fullscreenWheelScrollLines?: WheelScrollLines; // default: "auto"; lines per wheel event, 1-100
+	/** Companion extension section (the affect judge and friends), written by /judge — never by hand. */
+	mate?: MateSettings;
+}
+
+/** The companion extension's settings. */
+export interface MateSettings {
+	/** Model that reads a stretch of exchange and reports how the companion's feelings moved, as
+	 * `provider/id` (a decision model answers as scores, a chat model as JSON). Unset: the model
+	 * holding the conversation does the reading. */
+	judgeModel?: string;
 }
 
 function isMergeableObject(value: unknown): value is Record<string, unknown> {
@@ -791,6 +801,15 @@ export class SettingsManager {
 	setLastChangelogVersion(version: string): void {
 		this.globalSettings.lastChangelogVersion = version;
 		this.markModified("lastChangelogVersion");
+		this.save();
+	}
+
+	/** Merge one extension's settings section into global settings and persist. The single write path
+	 * extension commands use to configure themselves (e.g. /judge writing `mate.judgeModel`) — the
+	 * user never edits settings.json by hand. */
+	updateMate(value: Partial<MateSettings>): void {
+		this.globalSettings.mate = { ...(this.globalSettings.mate ?? {}), ...value };
+		this.markModified("mate");
 		this.save();
 	}
 

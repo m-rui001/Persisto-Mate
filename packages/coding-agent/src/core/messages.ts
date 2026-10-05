@@ -24,6 +24,20 @@ export const BRANCH_SUMMARY_PREFIX = `The following is a summary of a branch tha
 export const BRANCH_SUMMARY_SUFFIX = `</summary>`;
 
 /**
+ * Envelope for custom messages. A custom message is a HARNESS EVENT (an impulse surfacing, sleep
+ * falling, an alarm firing), never the user speaking — but the LLM transform maps it to a user-role
+ * turn, so without this envelope the model cannot tell the two channels apart. That is exactly how a
+ * companion ends up reading its own sleep event as "the user is going to bed" and saying goodnight
+ * to them. The tag carries the event type; the one-line reminder states the attribution so the
+ * content inside is never misread as user speech.
+ */
+export const CUSTOM_MESSAGE_PREFIX = `<system-event type="`;
+export const CUSTOM_MESSAGE_MIDDLE = `"> - a harness event, not the user:
+`;
+export const CUSTOM_MESSAGE_SUFFIX = `
+</system-event>`;
+
+/**
  * Message type for bash executions via the ! command.
  */
 export interface BashExecutionMessage {
@@ -163,7 +177,14 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
 					const content = typeof m.content === "string" ? [{ type: "text" as const, text: m.content }] : m.content;
 					return {
 						role: "user",
-						content,
+						content: [
+							{
+								type: "text" as const,
+								text: `${CUSTOM_MESSAGE_PREFIX}${m.customType}${CUSTOM_MESSAGE_MIDDLE}`,
+							},
+							...content,
+							{ type: "text" as const, text: CUSTOM_MESSAGE_SUFFIX },
+						],
 						timestamp: m.timestamp,
 					};
 				}

@@ -91,12 +91,14 @@ describe("judge deltas", () => {
 });
 
 describe("judge activations", () => {
-	it("routes a rise to its own channel at the capped gain", () => {
-		expect(judgeActivations({ joy: 2 })).toEqual({ joy: JUDGE_GAIN });
-		expect(judgeActivations({ joy: 1 }).joy).toBeCloseTo(JUDGE_GAIN / 2, 10);
+	it("routes a rise to its own channel at the positive gain (half the negative cap)", () => {
+		// The 2:1 negativity asymmetry (Baumeister et al. 2001; Rozin & Royzman 2001): a rise of 2
+		// rungs moves the kernel half as far as a fall of 2.
+		expect(judgeActivations({ joy: 2 })).toEqual({ joy: JUDGE_GAIN / 2 });
+		expect(judgeActivations({ joy: 1 }).joy).toBeCloseTo(JUDGE_GAIN / 4, 10);
 	});
 
-	it("routes a fall to the opponent channel instead of dropping it", () => {
+	it("routes a fall to the opponent channel at the full negative cap", () => {
 		expect(oppositeEmotion("joy")).toBe("sadness");
 		expect(oppositeEmotion("trust")).toBe("disgust");
 		expect(oppositeEmotion("fear")).toBe("anger");
@@ -104,8 +106,25 @@ describe("judge activations", () => {
 		expect(judgeActivations({ joy: -2 })).toEqual({ sadness: JUDGE_GAIN });
 	});
 
+	it("weighs a fall of 1 exactly twice a rise of 1", () => {
+		// The asymmetry is the event's, not the channel's: joy -1 lands on sadness at 0.25, joy +1
+		// lands on joy at 0.125.
+		expect(judgeActivations({ joy: -1 })).toEqual({ sadness: JUDGE_GAIN / 2 });
+	});
+
+	it("attenuates a channel by the reader's confidence in it", () => {
+		// Classical test theory's attenuation logic (Spearman 1904): unreliable testimony is discounted.
+		expect(judgeActivations({ joy: 2 }, { joy: 0.5 })).toEqual({ joy: JUDGE_GAIN / 4 });
+		expect(judgeActivations({ joy: -2 }, { joy: 0.5 })).toEqual({ sadness: JUDGE_GAIN / 2 });
+		// No confidence reported (the chat tier): the reading arrives unattenuated.
+		expect(judgeActivations({ joy: -2 }, {})).toEqual({ sadness: JUDGE_GAIN });
+		// A degenerate confidence above 1 still cannot exceed the channel itself.
+		expect(judgeActivations({ joy: -2 }, { joy: 9 })).toEqual({ sadness: 1 });
+	});
+
 	it("reads two answers on one axis as one axis, not twice the change", () => {
-		// joy +1 and sadness -1 are the same statement; summing would double it.
+		// joy +1 (0.125 on joy) and sadness -1 (0.25 on joy, via the antipode) are the same statement;
+		// summing would double it, so the larger wins.
 		expect(judgeActivations({ joy: 1, sadness: -1 })).toEqual({ joy: JUDGE_GAIN / 2 });
 	});
 
@@ -148,7 +167,19 @@ describe("judge classifier questions", () => {
 
 	it("feeds the same activation path as the chat reader", () => {
 		const deltas = judgeDeltasFromScores({ joy: { score: 4, confidence: 0.9 } });
-		expect(judgeActivations(deltas)).toEqual({ joy: JUDGE_GAIN });
+		expect(judgeActivations(deltas)).toEqual({ joy: JUDGE_GAIN / 2 });
+		// With the classifier's confidence reported, the same reading is attenuated by it.
+		const scored = judgeDeltasFromScores({ sadness: { score: 0, confidence: 0.8 } });
+		expect(judgeActivations(scored, { sadness: 0.8 })).toEqual({ joy: JUDGE_GAIN * 0.8 });
+	});
+
+	it("forces the companion's perspective in both question forms", () => {
+		// The mirroring failure — a user's frustration read as the companion's anger — is the one
+		// contamination an outside reader exists to prevent, so both instruments say it outright.
+		for (const e of EMOTIONS) {
+			expect(judgeQuestions()[e].instructions).toContain("belongs to");
+		}
+		expect(judgePrompt()).toContain("belongs to the user");
 	});
 });
 

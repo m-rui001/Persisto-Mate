@@ -38,6 +38,7 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
 	companionSection,
+	debugView,
 	driveGloss,
 	type ImpulseDecision,
 	LANG_NAMES,
@@ -81,6 +82,26 @@ const LANG_CHOICES: Array<{ label: string; lang: Lang }> = [
 function switchedNote(lang: Lang): string {
 	return lang === "zh" ? "伴侣改用中文思考和说话。" : "Your companion now thinks and speaks in English.";
 }
+
+/**
+ * First-run onboarding: the startup surface teaches the few commands that matter, in the language
+ * just chosen. Deliberately short — the changelog no longer prints at boot, and this is everything a
+ * new user needs to find the rest.
+ */
+const TUTORIAL: Record<Lang, string> = {
+	en: [
+		"Quick start:",
+		"- Just type to talk. /model or /login picks the model; /language switches language.",
+		"- /mate shows its current state, /debug every internal number, /judge picks the affect reader.",
+		"- Release notes live in /changelog.",
+	].join("\n"),
+	zh: [
+		"快速上手：",
+		"- 直接打字聊天；/model 或 /login 配模型，/language 切换语言。",
+		"- /mate 看它此刻的状态，/debug 看完整内部数值，/judge 选情绪判读模型。",
+		"- 更新日志在 /changelog。",
+	].join("\n"),
+};
 
 export interface MateExtensionOptions {
 	/** State directory override (defaults to getAgentDir()/mate). */
@@ -143,11 +164,19 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 					// A failed dialog must not block boot.
 				}
 			}
+			// A brand-new companion gets the short tutorial instead of a changelog dump (which no longer
+			// prints at boot). Only when nothing has ever been said: not on every boot of an existing one.
+			if (rt.state.counters.messages === 0 && ctx.hasUI) {
+				ctx.ui.notify(TUTORIAL[rt.language], "info");
+			}
 			// Re-arm persisted alarms; the manager fires them through the callback above.
 			alarmManager.scheduleNext();
 			rt.startHeartbeat({
 				onImpulse: (decision, thought) => onImpulse(decision, thought),
-				authorThought: (state, memory) => authorThought(liveCtx!, rt.language, state, memory),
+				authorThought: (state, memory, exclude) => {
+					// The impulse just voiced must not come straight back as the next thought's hint.
+					return authorThought(liveCtx!, rt.language, state, memory, exclude ?? []);
+				},
 				authorDream: (state, memory) => authorDream(liveCtx!, rt.language, state, memory),
 				onSleepEnter: () => {
 					// The visible farewell: drowsiness won, the model says goodnight, then it sleeps.
@@ -417,6 +446,81 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 				} catch {
 					ctx.ui.notify("companion state unavailable", "warning");
 				}
+			},
+		});
+
+		// ---------------------------------------------------------------------
+		// /debug: the developer view. Every number the model-facing state block
+		// tiers away — drives, felt emotions, habituation, counters — in one dump.
+		// The model reads words; this is where the floats live for the human.
+		// ---------------------------------------------------------------------
+		pi.registerCommand("debug", {
+			description: "Dump the companion's full internal state (all numbers, developer view)",
+			handler: async (_args, ctx) => {
+				try {
+					ctx.ui.notify(debugView(rt.state, Date.now()), "info");
+				} catch {
+					ctx.ui.notify("companion state unavailable", "warning");
+				}
+			},
+		});
+
+		// ---------------------------------------------------------------------
+		// /judge: which model reads a stretch of exchange and judges its affect.
+		// Writes the `mate` settings section through the host, so the user never
+		// edits settings.json by hand — the same shape as /model and /login.
+		//   /judge            selector (or current reader when no UI)
+		//   /judge provider/id  set directly, validated against the registry
+		//   /judge off        clear: the conversation model does the reading
+		// ---------------------------------------------------------------------
+		pi.registerCommand("judge", {
+			description: "Pick the affect-judge model (the reader that scores how each exchange felt)",
+			handler: async (args, ctx) => {
+				const arg = args?.trim();
+				const zh = rt.language === "zh";
+				if (arg === "off") {
+					pi.updateMateSettings({ judgeModel: undefined });
+					ctx.ui.notify(
+						zh ? "判读已清除：由当前对话模型判读。" : "Judge cleared: the conversation model does the reading.",
+						"info",
+					);
+					return;
+				}
+				if (arg) {
+					const ref = parseModelRef(arg);
+					if (!ref) {
+						ctx.ui.notify(zh ? "格式应为 provider/id" : 'expected "provider/id"', "warning");
+						return;
+					}
+					const known =
+						ctx.modelRegistry.findOfType("classifier", ref.provider, ref.id) ??
+						ctx.modelRegistry.find(ref.provider, ref.id);
+					if (!known) {
+						ctx.ui.notify(zh ? `没有这个模型：${arg}` : `no such model: ${arg}`, "warning");
+						return;
+					}
+					pi.updateMateSettings({ judgeModel: arg });
+					ctx.ui.notify(zh ? `判读模型：${arg}` : `Judge model: ${arg}`, "info");
+					return;
+				}
+				const current = judgeModel();
+				if (!ctx.hasUI) {
+					ctx.ui.notify(`judge: ${current ?? (zh ? "对话模型" : "conversation model")}`, "info");
+					return;
+				}
+				const rows = [...ctx.modelRegistry.getAll().map((m) => `${m.provider}/${m.id}`), "off"];
+				const picked = await ctx.ui.select(zh ? "谁来做情绪判读？" : "Who judges the affect?", rows);
+				if (!picked) return;
+				if (picked === "off") {
+					pi.updateMateSettings({ judgeModel: undefined });
+					ctx.ui.notify(
+						zh ? "判读已清除：由当前对话模型判读。" : "Judge cleared: the conversation model reads it.",
+						"info",
+					);
+					return;
+				}
+				pi.updateMateSettings({ judgeModel: picked });
+				ctx.ui.notify(zh ? `判读模型：${picked}` : `Judge model: ${picked}`, "info");
 			},
 		});
 

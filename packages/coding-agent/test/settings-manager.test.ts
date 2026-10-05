@@ -745,4 +745,21 @@ describe("SettingsManager", () => {
 			expect(manager.getShellPath()).toBe(homedir());
 		});
 	});
+
+	describe("updateMate", () => {
+		it("writes the judge model into the mate section and reads it back", () => {
+			const manager = SettingsManager.create(projectDir, agentDir);
+			manager.updateMate({ judgeModel: "typesafe/jev-latest" });
+			expect(manager.getSettings().mate?.judgeModel).toBe("typesafe/jev-latest");
+		});
+
+		it("keeps the section when a field is cleared, so /judge off never orphans the section", () => {
+			const manager = SettingsManager.create(projectDir, agentDir);
+			manager.updateMate({ judgeModel: "a/b" });
+			manager.updateMate({ judgeModel: undefined });
+			const mate = manager.getSettings().mate;
+			expect(mate).toBeDefined();
+			expect(mate?.judgeModel).toBeUndefined();
+		});
+	});
 });

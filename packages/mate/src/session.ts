@@ -40,16 +40,24 @@ export function emptySessions(maxEntries = 200): SessionLog {
 }
 
 /**
- * Record that this body just woke. If the previous entry is still open (an unclean exit), seal it at
- * `t` first — the gap where no process existed is implicitly the downtime between the lost close and
+ * Record that this body just woke. If the previous entry is still open (an unclean exit), seal it
+ * first — the gap where no process existed is implicitly the downtime between the lost close and
  * this open. Returns a NEW log.
+ *
+ * `sealUnclosedAt` is what the unclosed entry is sealed WITH when the caller knows the last moment
+ * the old body was demonstrably alive (the state's own clock). Default is `t` — the next open — but
+ * that turns the whole offline gap into "session duration" read backwards and a real night into a
+ * seconds-long phantom when the previous process opened only moments before it died. Sealing at the
+ * last-alive time keeps both the duration and the downtime honest.
  */
-export function openSession(log: SessionLog, t: number): SessionLog {
+export function openSession(log: SessionLog, t: number, sealUnclosedAt?: number): SessionLog {
 	let entries = log.entries.slice();
 	const last = entries[entries.length - 1];
 	if (last && last.close === undefined) {
-		// Unclean: the process died without closing its mark. Close it at the moment the next began.
-		entries[entries.length - 1] = { ...last, close: t };
+		// Unclean: the process died without closing its mark. Seal at the last-alive time, bounded
+		// to the entry's own lifetime (a state older than its session mark cannot move it earlier).
+		const seal = Math.min(Math.max(sealUnclosedAt ?? t, last.open), t);
+		entries[entries.length - 1] = { ...last, close: seal };
 	}
 	entries.push({ open: t });
 	if (entries.length > log.maxEntries) entries = entries.slice(entries.length - log.maxEntries);

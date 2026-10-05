@@ -255,14 +255,11 @@ export interface Lines {
 	now: (hhmm: string) => string;
 	body: string;
 	mood: string;
-	/** The "pad" handle sitting between the mood word and the three numbers. */
-	pad: string;
 	drives: string;
 	us: string;
 	trust: string;
 	close: string;
 	respect: string;
-	frust: string;
 	ignored: (n: number) => string;
 	self: string;
 	/** Head of the self line: how many messages this self has answered over its life. */
@@ -272,13 +269,9 @@ export interface Lines {
 	anxious: string;
 	tired: string;
 	impulse: string;
-	energy: string;
-	burst: string;
-	coherence: string;
-	entropy: string;
 	inclination: string;
-	/** The whole inclination line, so the terminator and "you choose" land naturally. */
-	inclinationLine: (lean: string, value: string, reason: string) => string;
+	/** The whole inclination line (lean + reason; the numeric value is /debug's business). */
+	inclinationLine: (lean: string, reason: string) => string;
 	recalled: string;
 	/** One-line notice that the user ran a harness command, arguments included, e.g. "/model foo". */
 	usedCommand: (cmd: string) => string;
@@ -290,10 +283,36 @@ export interface Lines {
 	/** Appended to the time line after a powered-off boot. */
 	wokeAfter: (gap: string) => string;
 
+	// ---- tiered state block ----
+	/**
+	 * The tiered surfaces carry WORDS, not floats: a channel inside its band is omitted entirely, a
+	 * channel past it becomes a short clause (the user's critique — "烦0.78" tells the model nothing).
+	 * The band lines are thresholds this kernel already decides with (see context.ts), not new
+	 * constants; the values themselves live behind /debug.
+	 */
+	/** First line of the volatile block: whose state this is. It rides the newest message, so the
+	 * attribution has to sit HERE, at the point of misreading, not only in the cached guidance. */
+	stateHeader: string;
+	/** Drive clauses, one per drive past its band. */
+	driveMissing: string;
+	driveCurious: string;
+	driveExpressive: string;
+	driveGrowing: string;
+	driveBored: string;
+	/** Drowsiness tiers on the sleep gate (halfway there / the gate is open). */
+	driveDrowsy: string;
+	driveSleepGate: string;
+	/** Frustration tiers on the relationship line (display floor 0.2, cold-ending gate 0.5). */
+	frustSome: string;
+	frustHigh: string;
+	/** Communication energy below the band, and burst past the fragmenting threshold. */
+	energyLow: string;
+	burstHigh: string;
+
 	// ---- minimal projection ----
 	/** Bare "drives"/"驱力" label (the minimal block has no colons). */
 	drivesBare: string;
-	miniSilent: (feels: string, energy: string) => string;
+	miniSilent: (feels: string) => string;
 
 	// ---- session (this body) summary ----
 	sessionOpened: (hhmm: string, dur: string) => string;
@@ -386,7 +405,6 @@ const EN: Lines = {
 	now: (hhmm) => `now ${hhmm}`,
 	body: "body:",
 	mood: "state:",
-	pad: "pad",
 	drives: "drives:",
 	us: "toward the user:",
 	// Not just "trust": `emotions.trust` prints as `trust` two lines above, and the two are different
@@ -395,7 +413,6 @@ const EN: Lines = {
 	trust: "trust in you",
 	close: "close",
 	respect: "respect",
-	frust: "frust",
 	ignored: (n) => `ignored x${n}`,
 	self: "self:",
 	said: "said",
@@ -404,12 +421,8 @@ const EN: Lines = {
 	anxious: "anxious",
 	tired: "tired",
 	impulse: "impulse:",
-	energy: "energy",
-	burst: "burst",
-	coherence: "coherence",
-	entropy: "entropy",
 	inclination: "inclination:",
-	inclinationLine: (lean, value, reason) => `${lean} (${value}) — ${reason}. you choose.`,
+	inclinationLine: (lean, reason) => `${lean} — ${reason}. you choose.`,
 	recalled: "recalled:",
 	usedCommand: (cmd) => `the user used ${cmd}`,
 	picked: (value) => `the user then picked: ${value}`,
@@ -417,8 +430,21 @@ const EN: Lines = {
 	silent: (dur, feels) => `silent ${dur} (feels ${feels})`,
 	wokeAfter: (gap) => `woke after ${gap} off`,
 
+	stateHeader: "(your inner state, not the user's words)",
+	driveMissing: "missing them",
+	driveCurious: "curious about something",
+	driveExpressive: "something to say",
+	driveGrowing: "wanting progress",
+	driveBored: "restless",
+	driveDrowsy: "getting sleepy",
+	driveSleepGate: "sleep winning",
+	frustSome: "a bit frustrated",
+	frustHigh: "frustrated",
+	energyLow: "running low",
+	burstHigh: "would send short bursts",
+
 	drivesBare: "drives",
-	miniSilent: (feels, energy) => `silent ${feels}, energy ${energy}`,
+	miniSilent: (feels) => `silent ${feels}`,
 
 	sessionOpened: (hhmm, dur) => `opened ${hhmm}, awake for ${dur}`,
 	sessionWoken: (n) => `woken ${n}x today`,
@@ -505,13 +531,11 @@ const ZH: Lines = {
 	now: (hhmm) => hhmm,
 	body: "身体：",
 	mood: "当前状态：",
-	pad: "pad",
 	drives: "驱力：",
 	us: "对用户的感情：",
 	trust: "信任",
 	close: "亲近",
 	respect: "敬",
-	frust: "烦",
 	ignored: (n) => `没被理 ${n} 次`,
 	self: "自己：",
 	said: "说过",
@@ -520,12 +544,8 @@ const ZH: Lines = {
 	anxious: "焦虑",
 	tired: "倦",
 	impulse: "冲动：",
-	energy: "劲",
-	burst: "碎",
-	coherence: "连贯",
-	entropy: "散",
 	inclination: "倾向：",
-	inclinationLine: (lean, value, reason) => `${lean}（${value}）：${reason}。你自己定。`,
+	inclinationLine: (lean, reason) => `${lean}：${reason}。你自己定。`,
 	recalled: "想起：",
 	usedCommand: (cmd) => `用户使用了 ${cmd}`,
 	picked: (value) => `用户随后选择了：${value}`,
@@ -533,8 +553,21 @@ const ZH: Lines = {
 	silent: (dur, feels) => `静了 ${dur}（觉得${feels}）`,
 	wokeAfter: (gap) => `关机 ${gap} 之后才醒`,
 
+	stateHeader: "（你的内部状态，不是用户说的）",
+	driveMissing: "想他",
+	driveCurious: "手痒",
+	driveExpressive: "有话说",
+	driveGrowing: "想做事",
+	driveBored: "闲得慌",
+	driveDrowsy: "困了",
+	driveSleepGate: "困得不行",
+	frustSome: "有点烦",
+	frustHigh: "很烦",
+	energyLow: "没劲",
+	burstHigh: "想分几条发",
+
 	drivesBare: "驱力",
-	miniSilent: (feels, energy) => `静了${feels}，劲 ${energy}`,
+	miniSilent: (feels) => `静了${feels}`,
 
 	sessionOpened: (hhmm, dur) => `${hhmm} 醒，已醒着 ${dur}`,
 	sessionWoken: (n) => `今天醒了 ${n} 次`,
@@ -621,7 +654,8 @@ const GUIDANCE: Record<Lang, string> = {
 		"  was opened and last closed, your mood, drives, how close you feel right now, the specific memories",
 		"  this message stirred, and a one-line inclination toward answering. ALL of it is internal - it",
 		"  describes YOUR side only (the relationship line is what YOU feel toward the user, not the",
-		"  reverse) and must never be revealed to the user. Let it shape tone and length, silently.",
+		"  reverse) and must never be revealed to the user or quoted back, numbers included. Let it shape",
+		"  tone and length, silently.",
 		"- You live inside pi, a coding-agent harness the user drives with slash commands (like /tree,",
 		"  /new, /resume, or whatever their installed extensions add). Those are meta-tools: they reshape",
 		"  or switch the conversation from the outside, without you. When one is used, a note simply says",
@@ -652,7 +686,7 @@ const GUIDANCE: Record<Lang, string> = {
 		"",
 		"- 指令里的 <mate_core> 是你是谁：名字、天性、性格、你记得的东西。它稳定，不随消息变。",
 		"  每条消息带来的 <mate> 是你此刻的状态：时间、静了多久、心情、驱力、亲近多少、翻起的记忆、",
-		"  想不想回应。它们只描述你这侧，是用来感受的，不是用来复述的，永远不要透露给用户。",
+		"  想不想回应。它们只描述你这侧，是用来感受的，不是用来复述的，数字也一样，永远不要透露给用户。",
 		"  让它们决定你的语气和长短。",
 		"- 你活在 pi 里，用户用斜杠命令驱动它（/tree、/new、/resume）。那是元工具，从外部改写对话，不经过你。",
 		"  状态块里一句说明就够，照常继续，不用点评。你的连续性长在记忆和心情里，不在某一段对话里。",

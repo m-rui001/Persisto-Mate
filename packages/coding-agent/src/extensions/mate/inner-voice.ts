@@ -16,28 +16,31 @@ const TIMEOUT_MS = 30_000;
 /** A short thought, never an essay: the ring renders 90 chars and the cadence is frequent. */
 const MAX_THOUGHT_CHARS = 240;
 
-function hintsOf(memory: MemoryGraph, state: MateState): string[] {
+function hintsOf(memory: MemoryGraph, state: MateState, exclude: string[] = []): string[] {
 	const labels = topNodes(memory, state.t, 3)
 		.map((key) => memory.nodes[key]?.label ?? "")
 		.filter(Boolean);
-	const obs = state.observations.slice(-2);
+	const obs = state.observations.slice(-2).filter((o) => !exclude.includes(o));
 	return [...labels, ...obs];
 }
 
 /**
  * One idle thought. The model decides WHAT to think about (the hints are offers, not orders) and
- * tags the subjects, so the habituation store keeps learning what has been circling.
+ * tags the subjects, so the habituation store keeps learning what has been circling. `exclude`
+ * carries the impulse just voiced to the user: serving it straight back as a hint is how the same
+ * sentence used to come back as the next impulse.
  */
 export async function authorThought(
 	ctx: ExtensionContext,
 	lang: Lang,
 	state: MateState,
 	memory: MemoryGraph,
+	exclude: string[] = [],
 ): Promise<{ text: string; topics: string[] } | null> {
 	const model = ctx.model;
 	if (!model) return null;
 	const L = linesFor(lang);
-	const hints = hintsOf(memory, state);
+	const hints = hintsOf(memory, state, exclude);
 	const user = [L.thoughtInstruction, hints.length ? `${L.thoughtHints}: ${hints.join(" | ")}` : ""]
 		.filter(Boolean)
 		.join("\n");

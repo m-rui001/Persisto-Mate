@@ -235,8 +235,9 @@ describe("judge with nothing configured", () => {
 		expect(reading?.source).toBe("automatic");
 		expect(reading?.model).toBe("xiaomi-mimo/mimo-v2.6-flash");
 		expect(reading?.deltas).toEqual({ joy: 2, anger: -1 });
-		// A fall on anger is applied as a rise on its antipode, and a full-scale reading is half a channel.
-		expect(reading?.activations).toEqual({ joy: 0.5, fear: 0.25 });
+		// A fall on anger is applied as a rise on its antipode at the full negative cap; a rise takes
+		// the positive gain, half of that (the 2:1 negativity asymmetry).
+		expect(reading?.activations).toEqual({ joy: 0.25, fear: 0.25 });
 		expect(applied.at(-1)).toEqual(reading?.activations);
 		expect(errors).toEqual([]);
 	});
@@ -356,7 +357,9 @@ describe("judge with a named classifier", () => {
 		);
 		expect(reading?.via).toBe("classifier");
 		expect(reading?.deltas).toEqual({ joy: 2, sadness: -2 });
-		expect(reading?.activations).toEqual({ joy: 0.5 });
+		// One axis said twice: joy +2 (positive gain x 0.9 confidence) and sadness -2 -> joy at the
+		// negative cap (x 0.8) are the same statement; the larger, confidence-attenuated one wins.
+		expect(reading?.activations).toEqual({ joy: 0.4 });
 	});
 
 	it("drops a reading whose distribution was flat", async () => {

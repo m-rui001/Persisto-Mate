@@ -75,6 +75,16 @@ export interface Relationship {
 /**
  * Homeostatic drives. Rise when unmet, decay when satisfied. All in [0,1].
  *
+ * Satisfaction paths (each reuses the existing discharge scale; no new magnitudes):
+ *   connection - user messages (0.8), our own proactive messages (0.25)
+ *   expression - user messages (0.4), proactive messages (0.9)
+ *   curiosity  - the measured surprise of an appraisal (Loewenstein 1994's information-gap theory:
+ *                curiosity is raised by a gap in knowledge and closed by acquiring the missing
+ *                information) and by consolidating a thought (remember/ponder with a subject)
+ *   growth     - task exchanges (White 1959 effectance / Deci & Ryan 2000 competence) and sleep
+ *                (sleepTransition applies it directly)
+ *   rest       - sleep (sleepTransition resets it)
+ *
  * Boredom is deliberately NOT stored here. The literature is consistent that boredom should not be
  * modelled as a homeostatic drive that accumulates and is discharged by contact (Schmidhuber's
  * learning-progress formalism, Darling's predictive-processing account, Yu et al.'s information-intake
@@ -210,7 +220,7 @@ export interface MateEvent {
 	 * the relationship, character and beliefs the way contact does, and it satisfies no drive and
 	 * counts no message — nothing new happened, only what it meant was decided.
 	 */
-	kind: "user_message" | "proactive" | "self_observation" | "appraisal" | "sleep" | "wake" | "tick";
+	kind: "user_message" | "proactive" | "self_observation" | "appraisal" | "tick";
 	/**
 	 * Plutchik activations in [0,1] — the only LLM-influenced input, and deliberately never a guess.
 	 * Intake applies contact events with an empty vector; affect arrives only from the periodic judge

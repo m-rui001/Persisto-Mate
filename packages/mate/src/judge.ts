@@ -9,7 +9,7 @@
  * affect at all. An outside reader has none of those failure modes: it cannot be skipped, it runs while
  * the companion is idle, and it never interrupts a reply.
  *
- * Three decisions in here, each of which is the whole design:
+ * Five decisions in here, each of which is the whole design:
  *
  *   1. DELTAS, NOT LEVELS. Asked "how much sadness is in this exchange (0..1)" a small model invents a
  *      number: absolute affect estimation requires an anchor it does not have. Asked "did sadness rise
@@ -25,10 +25,33 @@
  *      non-negative, which every consumer of it assumes.
  *
  *   3. THE READING MAY NOT OUT-SHOUT THE PERSON HAVING IT. JUDGE_GAIN caps the strongest possible
- *      reading at half a channel. The companion's own state is the primary evidence of how it feels —
- *      the reading is corroborating testimony about what just happened — and a background reader that
- *      could write bigger numbers than the state itself carries would be an outside opinion about your
- *      own feelings winning over the person having them.
+ *      reading at half a channel. The kernel treats a reading as ONE event's felt intensity; half a
+ *      channel is an episode, not a peak experience — the episode band is the one EMOTION_DECAY
+ *      already encodes from Verduyn & Lavrijsen (2015)'s measured durations. A background reader that
+ *      could write bigger numbers than a lived event would be an outside opinion winning over the
+ *      person having the feeling.
+ *
+ *   4. THE MAGNITUDE MAPPING IS ANCHORED, NOT FELT. Three published results fix how a reading's rungs
+ *      become activations:
+ *        - The -2..+2 ladder is a comparative instrument: judges answer "did it rise or fall"
+ *          reliably where absolute estimation fails (Thurstone 1927, the law of comparative
+ *          judgment; Likert 1932 for equally-weighted rungs on a latent continuum). The rung index
+ *          is therefore read as an equal-interval count — |d|/2 ∈ {0.25, 0.5, 0.75, 1} of full scale.
+ *        - Negative readings weigh twice positive ones. "Bad is stronger than good" is one of the
+ *          most replicated asymmetries in affective psychology (Baumeister et al. 2001; Rozin &
+ *          Royzman 2001's review places the ratio near 2:1), so a fall of +2 rungs moves the kernel
+ *          twice as far as a rise of 2. JUDGE_GAIN stays the NEGATIVE cap; positive readings take
+ *          half of it.
+ *        - A channel's activation is attenuated by the reader's confidence in it, the attenuation
+ *          logic of classical test theory (Spearman 1904): unreliable testimony is discounted, not
+ *          trusted at face value. The chat tier reports no confidence, so its readings arrive
+ *          unattenuated and the due gate carries the reliability burden instead.
+ *
+ *   5. THE USER'S FEELINGS ARE NOT THE COMPANION'S. The reader sits outside the exchange, which makes
+ *      mirroring the easiest error to make: a user's frustration read as the companion's anger is
+ *      exactly the contamination this instrument exists to prevent. Both question forms therefore
+ *      force the perspective explicitly: a feeling the USER expressed moves the companion's channel
+ *      only if the transcript shows the companion itself was moved.
  *
  * The model call itself is NOT here: this module is pure (window selection, question authoring, answer
  * parsing, delta arithmetic) so the semantics are unit-testable without a network. The extension host
@@ -68,9 +91,17 @@ export const JUDGE_THINKING_CHARS = 900;
 /** The judge answers one comparative question per channel on this ladder. */
 export const JUDGE_SCALE = 2;
 
-/** A full-scale reading (+2 or -2 on one channel) becomes this much activation: half of what the
- * companion may report for itself, so the outside read colours the state without overruling it. */
+/** A full-scale NEGATIVE reading becomes this much activation: half a channel. See header note 3/4:
+ *  an outside read colours the state without overruling it, and a reading is one event's felt
+ *  intensity — an episode, not a peak (the episode band EMOTION_DECAY encodes from Verduyn &
+ *  Lavrijsen 2015). */
 export const JUDGE_GAIN = 0.5;
+
+/** Negative readings weigh this many times positive ones. Bad is stronger than good (Baumeister,
+ * Bratslavsky, Finkenauer & Vohs 2001; the review in Rozin & Royzman 2001 places the ratio near 2:1),
+ * so a fall of 2 rungs moves the kernel twice as far as a rise of 2. Positive readings take
+ * JUDGE_GAIN divided by this; the negative cap itself stays JUDGE_GAIN. */
+export const JUDGE_NEGATIVITY_BIAS = 2;
 
 /** A reading is due once the companion has put this many reply tokens on screen since the last one:
  *  about two or three ordinary exchanges. Restraint, not cost — one reading per stretch of exchange is
@@ -144,7 +175,11 @@ export function judgeQuestions(): Record<string, { type: "score"; instructions: 
 	for (const e of EMOTIONS) {
 		out[e] = {
 			type: "score",
-			instructions: `Across this exchange, how did the COMPANION'S ${e} change? Judge the change from the start of the exchange to the end, not the level at the end. Something this exchange never touched is 0.`,
+			instructions:
+				`Across this exchange, how did the COMPANION'S ${e} change? Judge the change from the start of ` +
+				"the exchange to the end, not the level at the end. A feeling the USER expressed belongs to " +
+				"the user, not the companion: it moves this score only if the transcript shows the companion " +
+				"itself was moved (reacted, pulled back, or said so). Something this exchange never touched is 0.",
 			criteria: CRITERIA,
 		};
 	}
@@ -186,11 +221,14 @@ export function judgePrompt(): string {
 	return [
 		"You read a dialogue between a User and a Companion and report how the Companion's feelings moved.",
 		"",
+		"First read the USER's tone across this exchange - but report nothing about it. Then answer only",
+		"about the COMPANION, from the companion's side: a feeling the user expressed belongs to the user,",
+		"and moves the companion's channel only if the exchange shows the companion itself was moved.",
+		"",
 		`For each emotion below, answer with an integer from -${JUDGE_SCALE} to +${JUDGE_SCALE}:`,
 		CRITERIA.join("\n"),
 		"",
-		"Answer only about the COMPANION, from the companion's side of the exchange. Judge change, not",
-		"absolute strength: what was not touched by this exchange is 0.",
+		"Judge change, not absolute strength: what was not touched by this exchange is 0.",
 		"Reply with exactly one JSON object and nothing else, with these keys:",
 		EMOTIONS.map((e) => `"${e}": 0`).join(", "),
 	].join("\n");
@@ -210,17 +248,27 @@ export function judgeDeltas(raw: Partial<Record<Emotion, unknown>>): Partial<Rec
 }
 
 /**
- * Deltas -> kernel activations, with falls routed to the opponent channel (see header note 2).
+ * Deltas -> kernel activations, with three published anchors (header note 4):
+ * falls route to the opponent channel (note 2), a fall weighs JUDGE_NEGATIVITY_BIAS times a rise
+ * (Baumeister et al. 2001; Rozin & Royzman 2001), and a per-channel confidence attenuates the
+ * activation (Spearman 1904's attenuation logic: unreliable testimony is discounted).
  *
  * Two readings on one axis are the SAME axis: joy +1 and sadness -1 both mean "more joy", so they take
  * the larger of the two rather than summing. Without that, agreeing with yourself about a change would
  * double the size of it.
  */
-export function judgeActivations(deltas: Partial<Record<Emotion, number>>): Partial<EmotionVector> {
+export function judgeActivations(
+	deltas: Partial<Record<Emotion, number>>,
+	confidences?: Partial<Record<Emotion, number>>,
+): Partial<EmotionVector> {
 	const out: Partial<EmotionVector> = {};
 	for (const [channel, d] of Object.entries(deltas) as Array<[Emotion, number]>) {
 		const target = d > 0 ? channel : oppositeEmotion(channel);
-		const magnitude = (Math.abs(d) / JUDGE_SCALE) * JUDGE_GAIN;
+		// What carries the asymmetry is the FALL itself (a negative event), wherever the antipode
+		// routing then puts the activation.
+		const gain = d > 0 ? JUDGE_GAIN / JUDGE_NEGATIVITY_BIAS : JUDGE_GAIN;
+		const confidence = confidences?.[channel];
+		const magnitude = Math.min(1, (Math.abs(d) / JUDGE_SCALE) * gain * (confidence ?? 1));
 		if (magnitude > (out[target] ?? 0)) out[target] = magnitude;
 	}
 	return out;

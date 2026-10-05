@@ -104,8 +104,13 @@ const IMPULSE_SUPPRESS = 0.5;
  */
 export interface HeartbeatHooks {
 	onImpulse: (decision: ImpulseDecision, thought: Thought) => void;
-	/** Author an idle thought with the model. Null → the kernel's template thought is the fallback. */
-	authorThought: (state: MateState, memory: MemoryGraph) => Promise<{ text: string; topics: string[] } | null>;
+	/** Author an idle thought with the model. Null → the kernel's template thought is the fallback.
+	 * `exclude` lists texts the hints must not repeat (the impulse just voiced). */
+	authorThought: (
+		state: MateState,
+		memory: MemoryGraph,
+		exclude?: string[],
+	) => Promise<{ text: string; topics: string[] } | null>;
 	/** Author a dream from the day's residues; null → a dreamless cycle (nobody dreams every night). */
 	authorDream: (
 		state: MateState,
@@ -153,6 +158,9 @@ export class MateRuntime {
 	private sleepMode = false;
 	/** The night's most recent dream, kept for the wake-time encoding (only it survives the morning). */
 	private lastDreamText: string | null = null;
+	/** The impulse text last voiced to the user, so the next thought call's hints do not immediately
+	 * serve the same sentence back to the model (the voiced-thought → hints → impulse loop). */
+	private lastVoicedText: string | null = null;
 	/** When the last model call ended (turn or thought call) — the hazard floor is measured from it. */
 	private lastCallEnd = 0;
 	private hooks: HeartbeatHooks | null = null;
@@ -355,9 +363,11 @@ export class MateRuntime {
 			// kernel's sleep windows — a companion that was off for three days forgets the trivia and
 			// keeps the things that were reinforced, the way the affective state integrates the gap.
 			const memory = consolidate(this.persisted.memory, now);
-			// Record that THIS body just opened. If the last mark never closed (crash / killed terminal),
-			// openSession seals it at `now`, so the log stays honest about the comings and goings.
-			const sessions = openSession(this.persisted.sessions, now);
+			// Record that THIS body just opened. If the last mark never closed (crash, killed terminal,
+			// powered-off machine), openSession seals it — at the state's own last-alive time (`before`),
+			// not at this boot: sealing a whole night's absence against the next open's clock is what
+			// once recorded a full night as a 1.3-second session.
+			const sessions = openSession(this.persisted.sessions, now, before);
 			this.persisted = { ...this.persisted, state, memory, sessions };
 			if (report.gapMs >= CATCHUP_NOTE_MS) {
 				// Localise the wake note; the gap MILLISECONDS are identical, only the wording moves.
@@ -467,11 +477,17 @@ export class MateRuntime {
 
 		if (decision.action === "reach_out") {
 			this.recordBeatThought(decision.thought.text);
+			this.lastVoicedText = decision.thought.text;
+			this.markVoiced(decision.thought.topic);
 			this.hooks.onImpulse(decision, decision.thought);
 		} else if (fired) {
 			let authored: { text: string; topics: string[] } | null = null;
 			try {
-				authored = await this.hooks.authorThought(this.state, this.persisted.memory);
+				authored = await this.hooks.authorThought(
+					this.state,
+					this.persisted.memory,
+					this.lastVoicedText ? [this.lastVoicedText] : [],
+				);
 			} catch (err) {
 				this.onError(err);
 			}
@@ -548,9 +564,10 @@ export class MateRuntime {
 	}
 
 	/**
-	 * This body is closing (session_shutdown). Seal the open mark so the log records WHEN it stopped —
-	 * the requirement that the companion knows when it was opened and when it was put down. The next
-	 * wake's catch-up measures the offline span from this close, not from the last message.
+	 * This body is closing (session_shutdown). Seal the open mark so the log records WHEN it stopped.
+	 * The session log is bookkeeping only: catch-up itself measures the offline span from the state's
+	 * own clock (state.t), and an exit without a graceful close is sealed by the next open — the
+	 * seal-time honesty lives in runtime.wake, not here.
 	 */
 	sleep(): void {
 		try {
@@ -846,6 +863,28 @@ export class MateRuntime {
 				text,
 				t: Date.now(),
 			});
+		}
+	}
+
+	/**
+	 * The impulse was VOICED — a turn went to the user. Its topic's habituation trace is saturated:
+	 * the response was emitted, and a habituated stimulus does not immediately re-elicit (Groves &
+	 * Thompson 1970). Without this the voiced thought sat in the observations ring, fed the next
+	 * beat's hints, and came back as the same impulse. The trace decays on the normal clock, so the
+	 * topic becomes eligible again after a few habituation taus.
+	 */
+	private markVoiced(topic: string): void {
+		try {
+			this.persisted = {
+				...this.persisted,
+				state: {
+					...this.state,
+					habituation: { ...this.state.habituation, [topic]: { s: 1, t: Date.now() } },
+				},
+			};
+			this.persistSafe();
+		} catch (err) {
+			this.onError(err);
 		}
 	}
 

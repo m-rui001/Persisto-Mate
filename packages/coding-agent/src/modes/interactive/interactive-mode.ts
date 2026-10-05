@@ -487,7 +487,6 @@ export class InteractiveMode {
 
 	private lastSigintTime = 0;
 	private lastEscapeTime = 0;
-	private changelogMarkdown: string | undefined = undefined;
 	private startupNoticesShown = false;
 	private anthropicSubscriptionWarningShown = false;
 
@@ -831,33 +830,12 @@ export class InteractiveMode {
 	}
 
 	private showStartupNoticesIfNeeded(): void {
+		// The startup surface is the companion's, and release notes live behind /changelog: nothing is
+		// printed here any more. The version marker still advances in recordStartupChangelogVersion().
 		if (this.startupNoticesShown) {
 			return;
 		}
 		this.startupNoticesShown = true;
-
-		if (!this.changelogMarkdown) {
-			return;
-		}
-
-		if (this.chatContainer.children.length > 0) {
-			this.chatContainer.addChild(new Spacer(1));
-		}
-		this.chatContainer.addChild(new DynamicBorder());
-		if (this.settingsManager.getCollapseChangelog()) {
-			const versionMatch = this.changelogMarkdown.match(/##\s+\[?(\d+\.\d+\.\d+)\]?/);
-			const latestVersion = versionMatch ? versionMatch[1] : this.version;
-			const condensedText = `Updated to v${latestVersion}. Use ${theme.bold("/changelog")} to view full changelog.`;
-			this.chatContainer.addChild(new Text(condensedText, 1, 0));
-		} else {
-			this.chatContainer.addChild(new ThemedText(() => theme.bold(theme.fg("accent", "What's New")), 1, 0));
-			this.chatContainer.addChild(new Spacer(1));
-			this.chatContainer.addChild(
-				new Markdown(this.changelogMarkdown.trim(), 1, 0, this.getMarkdownThemeWithSettings()),
-			);
-			this.chatContainer.addChild(new Spacer(1));
-		}
-		this.chatContainer.addChild(new DynamicBorder());
 	}
 
 	private mountInteractiveTui(tui: TuiMainScreen | TuiAltScreen, components: readonly Component[]): void {
@@ -935,8 +913,9 @@ export class InteractiveMode {
 
 		this.registerSignalHandlers();
 
-		// Load changelog (only show new entries, skip for resumed sessions)
-		this.changelogMarkdown = this.getChangelogForDisplay();
+		// Advance the changelog bookkeeping (version marker + telemetry) without printing anything:
+		// the startup surface is the companion's, and release notes live behind /changelog.
+		this.recordStartupChangelogVersion();
 
 		if (this.session.scopedModels.length > 0 && this.shouldShowStartupDetails()) {
 			const modelList = this.session.scopedModels
@@ -1318,34 +1297,29 @@ export class InteractiveMode {
 	}
 
 	/**
-	 * Get changelog entries to display on startup.
-	 * Only shows new entries since last seen version, skips for resumed sessions.
+	 * Advance the changelog bookkeeping on a fresh session: record the version and send install
+	 * telemetry. Nothing is printed — the changelog itself lives behind /changelog. Skipped for
+	 * resumed sessions (their version was recorded when they were new).
 	 */
-	private getChangelogForDisplay(): string | undefined {
-		// Skip changelog for resumed/continued sessions (already have messages)
+	private recordStartupChangelogVersion(): void {
 		if (this.session.state.messages.length > 0) {
-			return undefined;
+			return;
 		}
 
 		const lastVersion = this.settingsManager.getLastChangelogVersion();
-		const changelogPath = getChangelogPath();
-		const entries = parseChangelog(changelogPath);
+		const entries = parseChangelog(getChangelogPath());
 
 		if (!lastVersion) {
-			// Fresh install - record the version, send telemetry, don't show changelog
+			// Fresh install - record the version, send telemetry
 			this.settingsManager.setLastChangelogVersion(VERSION);
 			this.reportInstallTelemetry(VERSION);
-			return undefined;
+			return;
 		}
 
-		const newEntries = getNewEntries(entries, lastVersion);
-		if (newEntries.length > 0) {
+		if (getNewEntries(entries, lastVersion).length > 0) {
 			this.settingsManager.setLastChangelogVersion(VERSION);
 			this.reportInstallTelemetry(VERSION);
-			return newEntries.map((e) => normalizeChangelogLinks(e.content, e)).join("\n\n");
 		}
-
-		return undefined;
 	}
 
 	private reportInstallTelemetry(version: string): void {
@@ -4598,19 +4572,15 @@ export class InteractiveMode {
 		const updateInstruction = () =>
 			theme.fg("muted", "Package updates are available. Run ") +
 			theme.fg("accent", `${APP_NAME} update --extensions`);
-		const packageLines = packages.map((pkg) => `- ${pkg}`).join("\n");
-
-		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
+		// One dim line, no bordered block: an update notice must not compete with the session's own
+		// first impression (the companion's greeting) for the user's attention.
 		this.chatContainer.addChild(
 			new ThemedText(
-				() =>
-					`${theme.bold(theme.fg("warning", "Package Updates Available"))}\n${updateInstruction()}\n${theme.fg("muted", "Packages:")}\n${packageLines}`,
+				() => `${updateInstruction()}\n${theme.fg("muted", packages.map((p) => `- ${p}`).join("\n"))}`,
 				1,
 				0,
 			),
 		);
-		this.chatContainer.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
 		this.ui.requestRender();
 	}
 
