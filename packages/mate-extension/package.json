@@ -1,6 +1,6 @@
 {
 	"name": "@m-rui/pi-mate-companion",
-	"version": "1.3.0",
+	"version": "1.4.0",
 	"description": "Persisto Mate companion as an installable pi extension: a learned body clock, real sleep and dreams, its own memory and feelings.",
 	"type": "module",
 	"license": "MIT",

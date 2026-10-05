@@ -25,7 +25,7 @@ import {
 	type StreamOptions,
 	type TranscriptContext,
 } from "@earendil-works/pi-ai";
-import { getApiProvider } from "@earendil-works/pi-ai/compat";
+import { getApiProvider, typesafeSystemOneApi } from "@earendil-works/pi-ai/compat";
 import { classifierErrorResult, imageErrorResult } from "@earendil-works/pi-ai/utils/model-operations";
 import type { ModelConfig, ModelsJsonModel, ModelsJsonModelOverride, ModelsJsonProvider } from "./model-config.ts";
 import {
@@ -194,7 +194,7 @@ function modelFromJson(
 	definition: ModelsJsonModel,
 	providerConfig: ModelsJsonProvider,
 	defaults: Model<Api> | undefined,
-): Model<Api> {
+): AnyModel {
 	const api = definition.api ?? providerConfig.api ?? defaults?.api;
 	if (!api) {
 		throw new Error(
@@ -208,6 +208,24 @@ function modelFromJson(
 	}
 	if (definition.maxTokens !== undefined && definition.maxTokens <= 0) {
 		throw new Error(`Provider ${providerId}, model ${definition.id}: invalid maxTokens`);
+	}
+	// A classifier entry ("type": "classifier") is callable through classify() only; it carries no
+	// chat knobs (reasoning, maxTokens, compat) and must not fall through to the chat shape, or the
+	// registry would offer a model no chat request can use and no classify request can find.
+	if (definition.type === "classifier") {
+		return {
+			type: "classifier",
+			id: definition.id,
+			name: definition.name ?? definition.id,
+			api: api as ClassifierApi,
+			provider: providerId,
+			baseUrl,
+			input: (definition.input ?? ["text"]) as ("text" | "image")[],
+			inputLimits: definition.inputLimits,
+			cost: definition.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: definition.contextWindow ?? 128000,
+			headers: undefined,
+		};
 	}
 	return {
 		id: definition.id,
@@ -646,7 +664,23 @@ export function composeModelProvider(
 	}
 	const extensionClassifiers = extension?.classifiers;
 	const classify = base?.classify;
-	if (classify || Object.keys(extensionClassifiers ?? {}).length > 0) {
+	// A models.json-only provider has no base and no extension implementations, so classifier entries
+	// in it would be unreachable; dispatch them to the known pi-ai classifier APIs here.
+	const jsonClassifiers: Partial<Record<string, ProviderClassifier>> = {
+		"typesafe-system-one": typesafeSystemOneApi(),
+	};
+	if (!classify && getAllModels().some((model) => isModelType(model, "classifier"))) {
+		provider.classify = (model, context, options) => {
+			const implementation = extensionClassifiers?.[model.api] ?? jsonClassifiers[model.api];
+			if (implementation) return implementation.classify(model, context, options);
+			return Promise.resolve(
+				classifierErrorResult(
+					model,
+					new Error(`Provider ${providerId} has no classifier implementation for "${model.api}"`),
+				),
+			);
+		};
+	} else if (classify || Object.keys(extensionClassifiers ?? {}).length > 0) {
 		provider.classify = (model, context, options) => {
 			const implementation = extensionClassifiers?.[model.api];
 			if (implementation) return implementation.classify(model, context, options);

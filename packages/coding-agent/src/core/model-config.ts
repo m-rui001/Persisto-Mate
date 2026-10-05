@@ -188,6 +188,7 @@ const ProviderCompatSchema = Type.Union([
 const ModelDefinitionSchema = Type.Object({
 	id: Type.String({ minLength: 1 }),
 	name: Type.Optional(Type.String({ minLength: 1 })),
+	type: Type.Optional(Type.Union([Type.Literal("chat"), Type.Literal("classifier")])),
 	api: Type.Optional(Type.String({ minLength: 1 })),
 	baseUrl: Type.Optional(Type.String({ minLength: 1 })),
 	reasoning: Type.Optional(Type.Boolean()),

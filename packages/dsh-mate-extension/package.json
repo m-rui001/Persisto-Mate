@@ -1,6 +1,6 @@
 {
 	"name": "@m-rui/dsh-mate-companion",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "Persisto Mate companion as a DeepSeek Harness (dsh) bundle: a learned body clock, real offline sleep, its own memory and feelings.",
 	"type": "module",
 	"license": "MIT",

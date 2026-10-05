@@ -1,6 +1,6 @@
 {
 	"name": "@earendil-works/pi-mate",
-	"version": "1.3.0",
+	"version": "1.4.0",
 	"description": "MATE deterministic affective kernel for pi-based companions (offline catch-up, sealed self, autonomous loop)",
 	"type": "module",
 	"main": "./dist/index.js",

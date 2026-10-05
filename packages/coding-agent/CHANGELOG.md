@@ -1,10 +1,14 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.0] - 2026-10-05
+
+### Added
+
+- **Classifier models can be declared in `models.json`.** A provider model entry with `"type": "classifier"` (e.g. Alibaba Bailian's `decision-model-preview` over `api: "typesafe-system-one"`) now registers under the registry's classifier type instead of being flattened into a fake chat model, and a models.json-only provider dispatches `classify` to the known pi-ai classifier APIs. Previously such an entry was unreachable through `findOfType` and broke any feature that resolved it.
 
 ### Removed
 
-- **The `/judge` command.** Configuration stays where it already worked: `settings.json` → `"mate": {"judgeModel": "provider/id"}` (or unset for the conversation model). The selector listed every registered model with no paging, and a settings key does the same job without a command.
+- **The `/judge` command.** Configuration stays where it already worked: `settings.json` → `"mate": {"judgeModel": "provider/id"}` (or unset for the conversation model). The selector listed every registered model with no paging, and a settings key does the same job without a command. The `updateMateSettings` extension API existed only for this command and was removed with it.
 
 ## [1.3.0] - 2026-10-05
 
