@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The kernel's idle-thought seed rotates on `counters.observations` (one +1 per thought actually kept) instead of `counters.transitions`, which live ticks advanced per minute and offline catch-up advanced by the hundreds — rotation unrelated to how often thoughts actually happened.
+
 ## [1.2.0] - 2026-10-05
 
 ### Added

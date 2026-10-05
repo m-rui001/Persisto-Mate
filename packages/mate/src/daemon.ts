@@ -125,9 +125,12 @@ export function generateThoughts(
 
 	// A concrete "on my mind" seed: a recent concept, if we have a graph. Used to turn abstract urges
 	// into about-something thoughts ("wondering what they're up to" → "…about X"). Rotated by the
-	// transition counter rather than taken as the single strongest node: rank is real information, but
-	// a mind that can only ever revisit the front of the queue spends its idle life on one subject.
-	const seed = memory ? seedNode(memory, now, state.counters.transitions) : undefined;
+	// DECISION counter — one +1 per thought actually kept — rather than taken as the single strongest
+	// node: rank is real information, but a mind that can only ever revisit the front of the queue
+	// spends its idle life on one subject. (It used to rotate on counters.transitions, which the
+	// offline catch-up advances by hundreds at once and a live process advances per minute-tick —
+	// rotation unrelated to how often thoughts actually happened.)
+	const seed = memory ? seedNode(memory, now, state.counters.observations) : undefined;
 	const seedLabel = seed ? (memory!.nodes[seed]?.label ?? "") : "";
 
 	// A single grounded line: fold the recalled concept into the thought's topic so habituation and

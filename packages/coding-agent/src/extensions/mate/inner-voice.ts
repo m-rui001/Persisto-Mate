@@ -7,7 +7,7 @@
  */
 
 import type { Emotion, Lang, MateState, MemoryGraph } from "@earendil-works/pi-mate";
-import { companionGuidance, linesFor, topNodes } from "@earendil-works/pi-mate";
+import { companionGuidance, HABITUATION_TAU, linesFor, topNodes } from "@earendil-works/pi-mate";
 import type { ExtensionContext } from "../../core/extensions/types.ts";
 
 /** How long an inner-voice call may take before it is dropped — these are background musings. */
@@ -16,11 +16,45 @@ const TIMEOUT_MS = 30_000;
 /** A short thought, never an essay: the ring renders 90 chars and the cadence is frequent. */
 const MAX_THOUGHT_CHARS = 240;
 
-function hintsOf(memory: MemoryGraph, state: MateState, exclude: string[] = []): string[] {
-	const labels = topNodes(memory, state.t, 3)
-		.map((key) => memory.nodes[key]?.label ?? "")
-		.filter(Boolean);
-	const obs = state.observations.slice(-2).filter((o) => !exclude.includes(o));
+/**
+ * How wide the hint pool rotates, and how many hints a call gets. The old top-3 could be owned
+ * outright by one strong thread — a store where the same two or three subjects hold the top seats
+ * made "rotation" moot because the LLM hint path never rotated at all. A wider window plus rotation
+ * gives the model's own sampling somewhere to go. Sampling breadth, not a dynamics constant.
+ */
+const HINT_WINDOW = 8;
+const HINT_COUNT = 3;
+
+/**
+ * The hint pool for an inner-voice call. Rotated by `state.counters.observations` — the decision
+ * counter, which advances once per thought actually KEPT, so consecutive thoughts enter the pool at
+ * different seats instead of always reading the same front (the kernel's seed rotation uses it too).
+ *
+ * Two channels of the echo loop are cut here, because both fed the machine's own output back as the
+ * next thought's input — the user's memory.json shows the result ("第二次冒出来" → ponder → memory →
+ * hint → "第三次冒头"):
+ *   - the observations ring is NOT a hint (the state block already carries the last thought for
+ *     continuity); a dream still gets it via `withObservations`, because a dream is exactly where
+ *     the day's residues belong;
+ *   - a private note written inside one habituation window IS the previous thought — the response
+ *     was emitted (Groves & Thompson 1970) — so it cools off before it may hint again. Older
+ *     private notes and non-private memories hint normally.
+ */
+export function hintsOf(
+	memory: MemoryGraph,
+	state: MateState,
+	exclude: string[] = [],
+	withObservations = false,
+): string[] {
+	const pool = topNodes(memory, state.t, HINT_WINDOW);
+	const start = pool.length > 0 ? state.counters.observations % pool.length : 0;
+	const rotated = [...pool.slice(start), ...pool.slice(0, start)];
+	const labels = rotated
+		.map((key) => memory.nodes[key])
+		.filter((n) => n?.label && !(n.private && state.t - n.t < HABITUATION_TAU))
+		.slice(0, HINT_COUNT)
+		.map((n) => n.label);
+	const obs = withObservations ? state.observations.slice(-2).filter((o) => !exclude.includes(o)) : [];
 	return [...labels, ...obs];
 }
 
@@ -79,7 +113,8 @@ export async function authorDream(
 	const model = ctx.model;
 	if (!model) return null;
 	const L = linesFor(lang);
-	const fragments = hintsOf(memory, state);
+	// A dream wants the day's residues, the observation ring included (see hintsOf).
+	const fragments = hintsOf(memory, state, [], true);
 	if (fragments.length === 0) return null;
 	const user = [L.dreamInstruction, "", `${L.dreamFragments}:`, ...fragments.map((f) => `- ${f}`)].join("\n");
 	const reply = await ctx.modelRegistry.complete(
