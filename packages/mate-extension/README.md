@@ -11,7 +11,7 @@ In any pi (or mate) install:
 ```
 pi install git:github.com/m-rui001/pi-mate-companion
 # or, if published to npm:
-pi install npm:@earendil-works/pi-mate-companion
+pi install npm:@m-rui/pi-mate-companion
 ```
 
 The companion's state lives under the host's agent dir (`~/.pi/agent/mate`), next to the sessions,

@@ -1,5 +1,5 @@
 /**
- * Publish the standalone companion plugin (@earendil-works/pi-mate-companion) to both channels:
+ * Publish the standalone companion plugin (@m-rui/pi-mate-companion) to both channels:
  *
  *   git — assemble the package (package.json + dist + README) into a temp dir that IS the package
  *         root (pi's git package source requires repo root = package root), commit it, and force-

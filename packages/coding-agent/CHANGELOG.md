@@ -11,7 +11,7 @@
 
 ### Added
 
-- **The companion ships as an installable plugin**: `@earendil-works/pi-mate-companion` (git source `git:github.com/m-rui001/pi-mate-companion`, npm on release). The kernel is bundled in; the host-provided pi modules are peers; the companion state lives under the host's agent dir. Install into any pi with `pi install git:github.com/m-rui001/pi-mate-companion` (`scripts/publish-mate-extension.mjs` publishes both channels; `npm run build:extension` builds the bundle).
+- **The companion ships as an installable plugin**: `@m-rui/pi-mate-companion` (git source `git:github.com/m-rui001/pi-mate-companion`, npm on release). The kernel is bundled in; the host-provided pi modules are peers; the companion state lives under the host's agent dir. Install into any pi with `pi install git:github.com/m-rui001/pi-mate-companion` (`scripts/publish-mate-extension.mjs` publishes both channels; `npm run build:extension` builds the bundle).
 
 ## [1.2.1] - 2026-10-05
 
