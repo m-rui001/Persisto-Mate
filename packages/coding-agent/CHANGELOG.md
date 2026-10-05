@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-05
+
 ### Fixed
 
 - The idle-thought hint pool no longer feeds on its own echo. The user's memory.json showed the loop: the top activation seats were held by one thread's family, the LLM hint path never rotated, and the machine's own recorded thoughts came back as hints ("第二次冒出来" → ponder → memory → hint → "第三次冒头"). `hintsOf` now rotates a wider window (8) on the decision counter, serves the observation ring only to dreams (a thought is what a dream is made of; a hint is not), and gives a private note one habituation window to cool off before it may hint again (the response was already emitted — Groves & Thompson 1970).
