@@ -1,0 +1,21 @@
+{
+	"name": "@earendil-works/pi-mate-companion",
+	"version": "1.2.1",
+	"description": "Persisto Mate companion as an installable pi extension: a learned body clock, real sleep and dreams, its own memory and feelings.",
+	"type": "module",
+	"license": "MIT",
+	"main": "./dist/index.js",
+	"pi": {
+		"extensions": ["./dist/index.js"]
+	},
+	"files": ["dist", "README.md"],
+	"scripts": {
+		"build": "node scripts/build.mjs"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*",
+		"@earendil-works/pi-agent-core": "*",
+		"@earendil-works/pi-tui": "*",
+		"typebox": "*"
+	}
+}

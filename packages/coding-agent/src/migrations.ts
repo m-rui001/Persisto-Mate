@@ -4,6 +4,7 @@
 
 import chalk from "chalk";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
+import { homedir } from "os";
 import { dirname, join } from "path";
 import { CONFIG_DIR_NAME, getAgentDir, getBinDir } from "./config.ts";
 import { migrateKeybindingsConfig } from "./core/keybindings.ts";
@@ -298,6 +299,70 @@ export async function showDeprecationWarnings(warnings: string[]): Promise<void>
 }
 
 /**
+ * One-time migration: fold the old separate `~/.mate/agent` home into the standard `~/.pi/agent`.
+ *
+ * The fork used to own a top-level config dir (.mate), which split the user's agent state from a
+ * stock pi install's. The fork now reads and writes .pi like every other pi distribution, so the
+ * old home is merged in: the companion's state dir moves whole, sessions and loose files move
+ * file-by-file, and anything already present in .pi WINS (a stock pi's models.json / auth.json /
+ * settings.json are the ones the user asked this install to share). Whatever could not move stays
+ * behind under ~/.mate — nothing is deleted that was not moved.
+ */
+export function migrateLegacyMateHome(legacyBase = join(homedir(), ".mate")): boolean {
+	const legacy = join(legacyBase, "agent");
+	const target = getAgentDir();
+	if (!existsSync(legacy)) return false;
+
+	let moved = false;
+	try {
+		mkdirSync(target, { recursive: true });
+		for (const name of readdirSync(legacy)) {
+			const src = join(legacy, name);
+			const dst = join(target, name);
+			if (!existsSync(dst)) {
+				// Nothing to collide with: the whole subtree moves under its own name.
+				try {
+					renameSync(src, dst);
+					moved = true;
+					continue;
+				} catch {
+					continue;
+				}
+			}
+			// Collision: merge file-by-file for the directories we know are flat, skip otherwise.
+			if (name !== "sessions" && name !== "mate") continue;
+			try {
+				for (const file of readdirSync(src)) {
+					const fileDst = join(dst, file);
+					if (existsSync(fileDst)) continue;
+					renameSync(join(src, file), fileDst);
+					moved = true;
+				}
+			} catch {
+				// Leave the entry in place if even reading it fails.
+			}
+		}
+	} catch {
+		return false;
+	}
+
+	// Remove the old home only when nothing was left behind: conflicts survive for a manual merge.
+	try {
+		if (readdirSync(legacy).length === 0) {
+			rmSync(legacy, { recursive: true, force: true });
+			try {
+				rmSync(legacyBase, { recursive: true, force: true });
+			} catch {
+				// .mate may still hold other files; leave it.
+			}
+		}
+	} catch {
+		// Read error: leave the old home alone.
+	}
+	return moved;
+}
+
+/**
  * Run all migrations. Called once on startup.
  *
  * @returns Object with migration results and deprecation warnings
@@ -306,6 +371,10 @@ export function runMigrations(cwd: string): {
 	migratedAuthProviders: string[];
 	deprecationWarnings: string[];
 } {
+	const migratedLegacyHome = migrateLegacyMateHome();
+	if (migratedLegacyHome) {
+		console.log(chalk.green(`Migrated legacy ~/.mate/agent into ${getAgentDir()}`));
+	}
 	const migratedAuthProviders = migrateAuthToAuthJson();
 	migrateSessionsFromAgentRoot();
 	migrateToolsToBin();

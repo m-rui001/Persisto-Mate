@@ -5,7 +5,7 @@
 	"type": "module",
 	"piConfig": {
 		"name": "mate",
-		"configDir": ".mate"
+		"configDir": ".pi"
 	},
 	"bin": {
 		"mate": "dist/bundle/cli.js"

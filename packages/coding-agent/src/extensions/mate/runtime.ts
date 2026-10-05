@@ -28,6 +28,10 @@
  */
 
 import { join } from "node:path";
+// The HOST's agent dir, not the fork's: the companion must live wherever the pi instance it runs
+// inside keeps its state (~/.pi/agent). The specifier is a virtual module the host provides, so the
+// standalone plugin build gets the same resolver as the bundled fork.
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import {
 	birth,
 	catchUp,
@@ -71,7 +75,6 @@ import {
 	transition,
 	wakeDrive,
 } from "@earendil-works/pi-mate";
-import { getAgentDir } from "../../config.ts";
 import { type AppraisalResult, appraise } from "./appraisal.ts";
 
 /** Minimum gap that triggers a boot catch-up note. Below this, waking is unremarkable. */

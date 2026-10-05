@@ -445,6 +445,14 @@ export async function createSessionManager(
 		);
 	}
 
+	// The companion's default: `mate` with no arguments continues the most recent conversation.
+	// The product is a companion that remembers, and opening a fresh brain by accident is the
+	// failure mode; `--new` opts out, and an explicit one-shot prompt keeps the old default.
+	// Upstream pi (APP_NAME "pi") keeps its original fresh-session default.
+	if (APP_NAME !== "pi" && !parsed.new && (parsed.messages?.length ?? 0) === 0) {
+		return SessionManager.continueRecent(cwd, sessionDir);
+	}
+
 	return SessionManager.create(cwd, sessionDir, { id: parsed.sessionId });
 }
 

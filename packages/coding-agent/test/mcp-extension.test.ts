@@ -40,9 +40,9 @@ describe("MCP config", () => {
 		const agentDir = join(root, "agent");
 		const cwd = join(root, "project");
 		mkdirSync(agentDir, { recursive: true });
-		mkdirSync(join(cwd, ".mate"), { recursive: true });
+		mkdirSync(join(cwd, ".pi"), { recursive: true });
 		writeFileSync(join(agentDir, "mcp.json"), JSON.stringify(global));
-		writeFileSync(join(cwd, ".mate", "mcp.json"), JSON.stringify(project));
+		writeFileSync(join(cwd, ".pi", "mcp.json"), JSON.stringify(project));
 		return { agentDir, cwd };
 	}
 

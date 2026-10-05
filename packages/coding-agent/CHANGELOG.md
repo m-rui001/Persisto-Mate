@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **The agent home is now the standard `~/.pi`.** The fork no longer owns a top-level `.mate` config dir: the agent dir, project config dir (`.pi/`), sessions, models.json, auth.json and the companion's own state all live where every other pi distribution puts them, so mate and a stock pi share one configuration. A one-time migration on startup folds an existing `~/.mate/agent` into `~/.pi/agent` (target files win conflicts; leftovers survive under `~/.mate` for a manual merge).
+- **`mate` with no arguments continues the most recent conversation** (the companion remembers; opening a fresh brain by accident was the failure mode). `--new` starts a fresh session; an explicit one-shot prompt keeps the old fresh-session default.
+
+### Added
+
+- **The companion ships as an installable plugin**: `@earendil-works/pi-mate-companion` (git source `git:github.com/m-rui001/pi-mate-companion`, npm on release). The kernel is bundled in; the host-provided pi modules are peers; the companion state lives under the host's agent dir. Install into any pi with `pi install git:github.com/m-rui001/pi-mate-companion` (`scripts/publish-mate-extension.mjs` publishes both channels; `npm run build:extension` builds the bundle).
+
 ## [1.2.1] - 2026-10-05
 
 ### Fixed

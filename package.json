@@ -51,7 +51,9 @@
 		"release:minor": "node scripts/release.mjs minor",
 		"release:major": "node scripts/release.mjs major",
 		"release:fix-links": "node scripts/release-notes.mjs fix-github-releases",
-		"prepare": "husky"
+		"prepare": "husky",
+		"build:extension": "npm --prefix packages/mate-extension run build",
+		"publish:extension": "node scripts/publish-mate-extension.mjs"
 	},
 	"devDependencies": {
 		"@anthropic-ai/sandbox-runtime": "0.0.26",
