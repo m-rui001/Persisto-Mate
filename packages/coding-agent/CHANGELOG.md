@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Removed
+
+- **The `/judge` command.** Configuration stays where it already worked: `settings.json` → `"mate": {"judgeModel": "provider/id"}` (or unset for the conversation model). The selector listed every registered model with no paging, and a settings key does the same job without a command.
+
 ## [1.3.0] - 2026-10-05
 
 ### Changed
