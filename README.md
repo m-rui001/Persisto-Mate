@@ -45,7 +45,7 @@ extension, or into DeepSeek Harness as a bundle (below).
 
 ## Get Persisto Mate
 
-One kernel, three hosts. Each host has its own state directory — a different host is a different
+One kernel, four hosts. Each host has its own state directory — a different host is a different
 body — but the kernel, the memories' format, and the behavior are the same.
 
 ### 1. The companion itself — the `mate` command
@@ -151,6 +151,19 @@ State lives beside the harness home (`$DSH_HOME` or `~/.dsh`) at `agent/mate`. T
 no side-channel model call to plugins yet, so the judge there is the host model reporting its own
 feelings through a `mate_feel` tool — same math, self-assessed. See
 [the bundle's README](https://github.com/m-rui001/dsh-mate-companion) for scope limits.
+
+### 4. Into SillyTavern — the UI extension
+
+For [SillyTavern](https://docs.sillytavern.app) (酒馆), install as a UI extension:
+
+```
+Extensions -> Install extension -> https://github.com/m-rui001/mate-sillytavern
+```
+
+The same kernel, bundled for the browser. State rides SillyTavern's own settings; injections go in
+as system-role chat entries, the affect judge is a structured quiet generation, and memory runs
+through `mate_remember` / `mate_ponder` function tools. `/mate` shows the public snapshot,
+`/mate-lang zh|en` switches language. See [the extension's README](https://github.com/m-rui001/mate-sillytavern).
 
 ## Why
 
@@ -357,7 +370,7 @@ Persisto Mate 是 [pi](https://github.com/earendil-works/pi)（最小化的自�
 
 ## 安装 Persisto Mate
 
-同一颗内核，三种宿主。每个宿主有自己的状态目录——不同的宿主就是不同的身体——但内核、记忆格式和行为完全一致。
+同一颗内核，四种宿主。每个宿主有自己的状态目录——不同的宿主就是不同的身体——但内核、记忆格式和行为完全一致。
 
 ### 1. 伴侣本体——`mate` 命令
 
@@ -438,6 +451,16 @@ dsh plugin --profile <你的profile> add @m-rui/dsh-mate-companion
 ```
 
 状态在 harness 主目录旁（`$DSH_HOME` 或 `~/.dsh`）的 `agent/mate`。dsh 目前没有给插件的旁路模型调用 API，所以那里的判定由宿主模型通过 `mate_feel` 工具自报——数学相同，自评代替外读。范围限制详见 [bundle 的 README](https://github.com/m-rui001/dsh-mate-companion)。
+
+### 4. 装进 SillyTavern——UI 扩展形态
+
+[SillyTavern](https://docs.sillytavern.app)（酒馆）上，作为 UI 扩展安装：
+
+```
+扩展 -> Install extension -> https://github.com/m-rui001/mate-sillytavern
+```
+
+同一颗内核，打包进浏览器。状态搭载酒馆自己的设置；注入以 system 角色的聊天条目进入提示，判定是一次结构化的静默生成，记忆走 `mate_remember` / `mate_ponder` 函数工具。`/mate` 看公开快照，`/mate-lang zh|en` 切换语言。详见[扩展的 README](https://github.com/m-rui001/mate-sillytavern)。
 
 ## 它如何工作
 
