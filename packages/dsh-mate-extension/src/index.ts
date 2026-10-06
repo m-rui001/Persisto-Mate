@@ -254,11 +254,8 @@ export function apply(ctx: HostContext): void {
 			const now = Date.now();
 			applyEvent(tickEvent(now));
 			const checks: PreSendChecks = {
-				hour: new Date(now).getHours(),
 				userActive: false,
 				recentProactive: recentProactive(now),
-				topic: "",
-				coldEnding: persisted.state.relationship.frustration > 0.5,
 			};
 			const { decision, state } = tick(persisted.state, now, checks, persisted.memory, lang);
 			persisted = { ...persisted, state };

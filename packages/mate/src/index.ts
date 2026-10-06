@@ -10,7 +10,7 @@
  *   - kernel:  transition (the pure function), sleepTransition, effort/energy/burst models
  *   - offline: catchUp, verifySubdivisionInvariance, crossedSleepWindows
  *   - context: stableContext (cached prefix) / stateContext (volatile per-turn tail), publicView
- *   - autonomy: tick, replyInclination, generateThoughts, preSendReview, sendStyle
+ *   - autonomy: tick, replyInclination, generateThoughts, sendStyle
  *   - spark:   the SPARK belief loop (see spark.ts)
  *   - memory:  the associative graph — tokenise/encode/recall/consolidate/summary. Private
  *              thoughts are ordinary entries in this graph, marked private (see memory.ts)

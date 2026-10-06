@@ -468,7 +468,7 @@ export class MateRuntime {
 
 		// A drowsy body does not reach out: the impulse stays inner life.
 		if (decision.action === "reach_out" && drowsy >= IMPULSE_SUPPRESS) {
-			decision = { action: "think_only", thought: decision.thought, reason: "drowsy", advisory: decision.advisory };
+			decision = { action: "think_only", thought: decision.thought, reason: "drowsy" };
 		}
 
 		// The hazard roll: past the floor, each beat may wake the model for one short thought. The
@@ -700,7 +700,7 @@ export class MateRuntime {
 	/** The companion chose to say something on its own initiative; expression is satisfied. This also
 	 * opens an "unanswered overture" streak — reset the next time the user actually replies. With the
 	 * inbound gate removed (P1), unanswered now counts only our OWN proactive messages left hanging,
-	 * which is exactly what preSendReview uses to keep the companion from chasing silence forever. */
+	 * which is exactly what the unanswered-tolerance stop uses to keep the companion from chasing silence forever. */
 	noteProactiveSent(): void {
 		try {
 			this.applyEvent({ kind: "proactive", activations: {}, intent: "chat", t: Date.now() });
@@ -893,11 +893,8 @@ export class MateRuntime {
 
 	private computeImpulse(now: number, userActive: boolean): TickResult {
 		const checks: PreSendChecks = {
-			hour: new Date(now).getHours(),
 			userActive,
 			recentProactive: this.recentProactiveCount(now),
-			topic: "",
-			coldEnding: this.state.relationship.frustration > 0.5,
 		};
 		// Pass the graph so thoughts are GROUNDed in real memories (P4), not free-floating mood.
 		return tick(this.state, now, checks, this.persisted.memory, this.lang);

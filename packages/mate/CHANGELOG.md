@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-06
+
+
+### Breaking Changes
+
+- **The autonomous loop is simplified; judgment moved fully to the model.** `tick()` now gates a proactive impulse ONLY on the two hard hygiene stops (unanswered-overture tolerance, hourly proactive budget) — the conviction floor, the "faint-pull" branch and `preSendReview` (with its five advisories) are gone, along with `convictionFloor()` and the `advisory` field on `ImpulseDecision`. `PreSendChecks` shrank to `{ userActive, recentProactive }`. `generateThoughts()` collapsed from six coefficient-tuned channels to three (想你 / 好奇或无聊 / 有话想说), each with urgency taken directly from its drive value quantised by the same 0.6 band the state block speaks in; `Thought.kind` shrank to `"curiosity" | "missing_user" | "observation"`. The i18n `Lines` strings for the deleted advisories (`ad*`, `impulseAdvisory`, `impulseWeigh`, `thPattern`, `thNone`) were removed. Hosts embedding the kernel (the dsh companion) migrate by passing the smaller `PreSendChecks` and reading no advisory.
+
+### Changed
+
+- The boredom drive line now says what it feels like and what it wants ("好无聊，想找点事情做" / "bored, looking for something to do") instead of the opaque "闲得慌" / "restless". Boredom now surfaces as an impulse whenever it crosses the 0.6 band — no formula stands between the feeling and the mind.
+- Companion guidance now points at the new host-side `reminisce` tool (read past conversations by day and hour), with the corresponding `Lines` strings for the tool's index rendering in both languages.
+
 ## [1.3.0] - 2026-10-05
 
 ### Changed

@@ -2,16 +2,21 @@
  * The autonomous loop (MATE daemon), rebuilt for a machine that powers off.
  *
  * The paper runs a 60-second heartbeat forever and generates thoughts between messages, with a
- * pre-send review that self-blocks 98.5% of impulses. Two things are preserved and one is changed:
+ * pre-send review that self-blocks 98.5% of impulses. Two things are preserved and two are changed:
  *
  *   PRESERVED  - thinking is graph/state-driven, not scheduled. The companion writes because it
  *                thought something worth sharing, not because N hours elapsed. social_pressure
  *                going negative under silence is the impulse; drives and habituation shape it.
- *   PRESERVED  - the pre-send review. Most impulses die internally. This is what keeps a proactive
- *                companion from becoming a spam bot.
+ *   PRESERVED  - the hard hygiene stops. Two objective rate/cost limits — the hourly proactive
+ *                budget and the unanswered-overture tolerance — protect the USER from a runaway
+ *                loop. They are the kernel's only suppression authority left.
  *   CHANGED    - the heartbeat is not assumed to have been running. On boot, catch-up (catchup.ts)
  *                advances the state across the gap in closed form; the daemon then resumes ticking
  *                only while the process is actually alive.
+ *   CHANGED    - every judgment call is the MODEL's. There is no conviction floor, no advisory
+ *                catalogue: a thought the beat has ranked first SURFACES, with its urgency, into a
+ *                mind that can already see its own drives, the clock and its memories in the state
+ *                block. A formula between the feeling and the mind only stood between them.
  *
  * Crucially, this module produces DECISIONS and THOUGHTS. It does not send email, does not open a
  * socket, does not know how the user is reached. The requirement was that reaching out (email, a
@@ -29,27 +34,19 @@ import type { MateState, Thought } from "./types.ts";
 /** What the loop decided to do about an impulse. */
 export type ImpulseDecision =
 	| { action: "stay_silent"; reason: string }
-	| { action: "think_only"; thought: Thought; reason: string; advisory: string[] }
+	| { action: "think_only"; thought: Thought; reason: string }
 	| {
 			action: "reach_out";
 			thought: Thought;
 			channel: "reply" | "proactive";
 			reason: string;
-			/** Content-level cautions the review did NOT enforce — the model decides against them. */
-			advisory: string[];
 	  };
 
 export interface PreSendChecks {
-	/** Local hour, 0-23, for night-quiet reasoning. */
-	hour: number;
 	/** Is the user currently active (a message just arrived)? */
 	userActive: boolean;
 	/** Proactive messages already sent in the last hour. */
 	recentProactive: number;
-	/** Topic of the candidate thought, for freshness/overlap checks. */
-	topic: string;
-	/** Was the last exchange dismissive / did it end coldly? */
-	coldEnding: boolean;
 }
 
 /**
@@ -68,19 +65,6 @@ function thinkHabit(state: MateState, topic: string, trace: { s: number; t: numb
 	}
 	habituation[topic] = trace;
 	return { ...state, habituation };
-}
-
-/**
- * Topics with a trace still inside one tau: what this companion has actually been thinking about
- * lately. `preSendReview` uses it as the repetition note, so it reads the persisted record rather
- * than a list the host would have to maintain beside it.
- */
-function liveTopics(state: MateState, now: number): string[] {
-	const out: string[] = [];
-	for (const [topic, prev] of Object.entries(state.habituation)) {
-		if (now - prev.t <= HABITUATION_TAU) out.push(topic);
-	}
-	return out;
 }
 
 /**
@@ -105,11 +89,13 @@ export function habituate(
 }
 
 /**
- * Generate thought candidates from current state. The paper's "graph traversal" now has a real
- * graph to traverse: the associative memory (memory.ts). Each affective candidate below is GROUNDed
- * in a recalled concept where the graph has one, so the companion has a specific thing to feel
- * about, not just a mood. The `memory` argument is optional so a fresh/broken graph still produces
- * mood-driven thoughts (the previous behaviour) — the graph enriches, it never gates.
+ * Generate thought candidates from current state. Three channels, one urgency each — the DRIVE
+ * itself, quantised by the same 0.6 band the state block speaks in (a thought exists exactly when
+ * the companion's own state line says the drive is felt), with no per-kind coefficient stacks to
+ * tune: the model, not a formula, weighs what a 0.7 pull means. Each candidate is GROUNDed in a
+ * recalled concept where the graph has one, so the companion has a specific thing to feel about,
+ * not just a mood. The `memory` argument is optional so a fresh/broken graph still produces
+ * mood-driven thoughts — the graph enriches, it never gates.
  */
 export function generateThoughts(
 	state: MateState,
@@ -121,7 +107,6 @@ export function generateThoughts(
 	const out: Array<{ thought: Thought; rawUrgency: number }> = [];
 	const ch = state.character;
 	const drives = state.drives;
-	const aw = state.awareness;
 
 	// A concrete "on my mind" seed: a recent concept, if we have a graph. Used to turn abstract urges
 	// into about-something thoughts ("wondering what they're up to" → "…about X"). Rotated by the
@@ -133,8 +118,8 @@ export function generateThoughts(
 	const seed = memory ? seedNode(memory, now, state.counters.observations) : undefined;
 	const seedLabel = seed ? (memory!.nodes[seed]?.label ?? "") : "";
 
-	// A single grounded line: fold the recalled concept into the thought's topic so habituation and
-	// the pre-send freshness check operate on a REAL subject, not a generic bucket.
+	// A single grounded line: fold the recalled concept into the thought's topic so habituation
+	// operates on a REAL subject, not a generic bucket.
 	const topic = (base: string): string => (seedLabel ? `${base}:${seedLabel}` : base);
 
 	const mk = (kind: Thought["kind"], text: string, urgency: number, top: string): void => {
@@ -145,154 +130,47 @@ export function generateThoughts(
 		});
 	};
 
-	// missing_user: silence + attachment + negative social pressure. Scales with extraversion.
+	// 想你: the connection drive has built past its band under silence. The extra hour floor only
+	// keeps a just-finished exchange from thinking "I miss you" at goodbye.
 	const silenceH = (now - state.lastInteraction) / 3_600_000;
-	if (silenceH > 1) {
-		const pull = Math.min(1, silenceH / 12) * (0.4 + state.relationship.attachment) * (0.5 + state.personality.e);
-		const pressure = Math.max(0, -aw.socialPressure);
-		mk("missing_user", L.thMissing(seedLabel), pull * (0.4 + pressure), `silence:${Math.floor(silenceH / 3)}`);
+	if (silenceH > 1 && drives.connection >= 0.6) {
+		mk("missing_user", L.thMissing(seedLabel), drives.connection, `silence:${Math.floor(silenceH / 3)}`);
 	}
 
-	// curiosity: the curiosity drive, amplified by openness and the curiosity trait. Grounded in a
-	// specific memory when possible — curiosity about SOMETHING specific beats free-floating itch.
-	if (drives.curiosity > 0.5) {
-		const c = (drives.curiosity - 0.5) * 2 * (0.4 + state.personality.o) * (0.5 + ch.curiosity);
-		// The window the seed rotates through, taken one step past the seed: curiosity is about the
-		// NEXT thing on the list, so the two never ground the same memory in the same beat.
-		const window = memory ? topNodes(memory, now, 4) : [];
-		const curiousKey = window.length > 1 ? window[(window.indexOf(seed ?? "") + 1) % window.length] : undefined;
-		const curious = curiousKey ? memory?.nodes[curiousKey] : undefined;
-		mk("curiosity", L.thCuriosity(curious?.label ?? ""), c, curious ? `curiosity:${curious.label}` : "curiosity");
-	}
-
-	// expression: the need to say something that has been building.
-	if (drives.expression > 0.6) {
-		mk("observation", L.thExpression(seedLabel), (drives.expression - 0.6) * 2.5, "expression");
-	}
-
-	// boredom: under-stimulation, restless for something to happen. Distinct from curiosity (a
-	// specific unknown) and missing_user (this person) — the itch is "nothing new is going on". It
-	// is a DERIVED signal (see kernel.boredomOf): high when the world has been playing out exactly
-	// as predicted for a while, and collapsed by genuine novelty.
+	// 好奇或无聊: two flavours of seeking stimulation — a specific unknown, or nothing new going on
+	// (boredomOf is DERIVED: high when the world has played out exactly as predicted, collapsed by
+	// novelty). Whichever is felt stronger names the thought.
 	const boredom = boredomOf(state, now);
-	if (boredom > 0.6) {
-		const b = (boredom - 0.6) * 2.5 * (0.4 + state.personality.o);
-		mk("curiosity", L.thBoredom(seedLabel), b, "boredom");
+	if (drives.curiosity >= 0.6 || boredom >= 0.6) {
+		if (boredom > drives.curiosity) {
+			mk("curiosity", L.thBoredom(seedLabel), boredom, "boredom");
+		} else {
+			// The window the seed rotates through, taken one step past the seed: curiosity is about
+			// the NEXT thing on the list, so the two never ground the same memory in the same beat.
+			const window = memory ? topNodes(memory, now, 4) : [];
+			const curiousKey = window.length > 1 ? window[(window.indexOf(seed ?? "") + 1) % window.length] : undefined;
+			const curious = curiousKey ? memory?.nodes[curiousKey] : undefined;
+			mk(
+				"curiosity",
+				L.thCuriosity(curious?.label ?? ""),
+				drives.curiosity,
+				curious ? `curiosity:${curious.label}` : "curiosity",
+			);
+		}
 	}
 
-	// vulnerability: low self-worth or high fatigue + something unshared.
-	if (ch.selfWorth < 0.35 || state.allostasis.fatigue > 0.7) {
-		const v = Math.max(0, 0.35 - ch.selfWorth) * 2 + Math.max(0, state.allostasis.fatigue - 0.7);
-		mk("vulnerability", L.thVulnerability, v * (0.3 + ch.vulnerability), "vulnerable");
-	}
-
-	// pattern: high thought_saturation means we are spiralling; a thought about the spiral itself.
-	// Grounded: name what we are circling, because a rumination about a real node is actionable.
-	if (aw.thoughtSaturation > 0.7) {
-		const circling = seedLabel || L.thNone;
-		mk("pattern", L.thPattern(circling), (aw.thoughtSaturation - 0.7) * 2 * (0.3 + ch.reflectiveness), "rumination");
+	// 有话想说: the expression drive, or something unshared pressing on a low self-worth — the same
+	// channel (something inside wants out); the wording names which it is.
+	if (drives.expression >= 0.6 || ch.selfWorth < 0.35) {
+		mk(
+			"observation",
+			ch.selfWorth < 0.35 ? L.thVulnerability : L.thExpression(seedLabel),
+			Math.max(drives.expression, 1 - ch.selfWorth),
+			"expression",
+		);
 	}
 
 	return out;
-}
-
-/**
- * The pre-send review, split along the agency principle (P1: "减少内置模式").
- *
- * Two kinds of check, deliberately separated:
- *   - RATE/COST (blocked): objective hygiene the MODEL cannot see — the hourly spam budget and the
- *     unanswered-overture tolerance. These stay hard, because they protect the USER from a runaway
- *     proactive loop. They are the only suppression authority left here.
- *   - JUDGMENT (advisory): everything about HOW the message would land — repetition, a cold ending,
- *     quiet hours, whether it's intimate enough to share, whether the conviction is there. These no
- *     longer veto. They become one-line notes handed to the model, which is better placed than a
- *     formula to feel its way to a decision. This is the shift from "the kernel self-blocks 94%" to
- *     "the mind is told what to weigh and decides."
- */
-export interface PreSendReview {
-	/** An enforced rate/cost stop. If present, the impulse does not fire, with this reason. */
-	blocked: string | null;
-	/** Content-level cautions to surface to the model, never to enforce. */
-	advisory: string[];
-	reason: string;
-}
-
-/**
- * The conviction floor: how strong a pull must be before it earns an INTERRUPT of the user.
- * One formula, two uses: preSendReview surfaces it as an advisory note, and tick() uses it as the
- * gate on firing a proactive turn. Below it an impulse stays inner life — a real impulse can be a
- * smile, a note to self, or "算了不说了"; the thought is still recorded, and the model may voice it
- * on its own next turn. Not a new constant: the same formula the review already used.
- */
-export function convictionFloor(state: MateState): number {
-	return 0.45 - state.personality.e * 0.2 - state.character.impulsivity * 0.1;
-}
-
-export function preSendReview(
-	state: MateState,
-	thought: Thought,
-	checks: PreSendChecks,
-	now: number,
-	lang: Lang = "en",
-): PreSendReview {
-	const L = linesFor(lang);
-	const ch = state.character;
-	const p = state.personality;
-	const advisory: string[] = [];
-
-	// --- RATE / COST: hard stops the model cannot observe. ---
-
-	// Unanswered tolerance: an introvert stops reaching into silence after 1, an extravert after ~3.
-	const maxUnanswered = 1 + Math.round(p.e * 2.5);
-	if (!checks.userActive && state.relationship.unanswered >= maxUnanswered) {
-		return {
-			blocked: `already sent ${state.relationship.unanswered} into silence; tolerance is ${maxUnanswered}`,
-			advisory,
-			reason: "rate-limited",
-		};
-	}
-
-	// Spam budget: personality-scaled cap per hour.
-	const perHourCap = Math.max(1, Math.round(1 + p.e * 2 + ch.impulsivity));
-	if (checks.recentProactive >= perHourCap) {
-		return {
-			blocked: `proactive budget ${checks.recentProactive}/${perHourCap} this hour`,
-			advisory,
-			reason: "rate-limited",
-		};
-	}
-
-	// --- JUDGMENT: advisories the model weighs and can overrule. ---
-
-	if (liveTopics(state, now).includes(thought.topic)) {
-		advisory.push(L.adRecentTopic);
-	}
-
-	if (checks.coldEnding) {
-		advisory.push(ch.attachmentAnxiety >= 0.6 ? L.adColdAnxious : L.adColdSpace);
-	}
-
-	// Night quiet: window widens with neuroticism (an anxious mind keeps quieter hours).
-	const quietStart = 23 - Math.round(ch.attachmentAnxiety * 1);
-	const quietEnd = 7 + Math.round(p.n * 1);
-	const h = checks.hour;
-	const inQuiet = quietStart > quietEnd ? h >= quietStart || h < quietEnd : h >= quietStart && h < quietEnd;
-	if (inQuiet && !checks.userActive) {
-		advisory.push(L.adQuietHours(quietStart, quietEnd));
-	}
-
-	// Trust/intimacy: a low-trust companion sharing something vulnerable is a judgment call, not a ban.
-	if (thought.kind === "vulnerability" && state.relationship.trust < ch.trustBaseline * 0.8) {
-		advisory.push(L.adLowTrust);
-	}
-
-	// Conviction floor as a nudge, not a gate.
-	const floor = convictionFloor(state);
-	if (!checks.userActive && thought.urgency < floor) {
-		advisory.push(L.adFaintPull(thought.urgency.toFixed(2), floor.toFixed(2)));
-	}
-
-	return { blocked: null, advisory, reason: advisory.length ? "weighed" : "cleared" };
 }
 
 /**
@@ -302,6 +180,11 @@ export function preSendReview(
  * impulse was voiced. Still performs nothing — the host persists the returned state and turns a
  * "reach_out" into an actual message through whatever channel it has, including one the model set
  * up itself.
+ *
+ * The only gates left are the two hard hygiene stops the model cannot observe (unanswered-overture
+ * tolerance, hourly proactive budget). Everything else — whether the pull is "strong enough", what
+ * hour it is, how the last exchange ended — the model weighs for itself: it sees the thought, its
+ * urgency, and its own state block every turn.
  */
 export interface TickResult {
 	decision: ImpulseDecision;
@@ -321,7 +204,7 @@ export function tick(
 		return { decision: { action: "stay_silent", reason: "no active impulse" }, state };
 	}
 
-	// Habituate and rank.
+	// Habituate and rank; the chosen topic's trace is written whether or not anything fires.
 	const gated = thoughts
 		.map(({ thought, rawUrgency }) => {
 			const h = habituate(state, thought.topic, rawUrgency, now);
@@ -332,36 +215,42 @@ export function tick(
 	const top = gated[0];
 	const habituated = thinkHabit(state, top.thought.topic, top.trace, now);
 
-	const review = preSendReview(state, top.thought, checks, now, lang);
-	if (review.blocked) {
-		// Rate/cost stop: keep the thought as inner life, but it does not fire. The advisory notes still
-		// ride along so the model sees what it was weighing.
-		return {
-			decision: { action: "think_only", thought: top.thought, reason: review.blocked, advisory: review.advisory },
-			state: habituated,
-		};
+	if (!checks.userActive) {
+		// Unanswered tolerance: an introvert stops reaching into silence after 1, an extravert after ~3.
+		const maxUnanswered = 1 + Math.round(state.personality.e * 2.5);
+		if (state.relationship.unanswered >= maxUnanswered) {
+			return {
+				decision: {
+					action: "think_only",
+					thought: top.thought,
+					reason: `already sent ${state.relationship.unanswered} into silence; tolerance is ${maxUnanswered}`,
+				},
+				state: habituated,
+			};
+		}
+
+		// Spam budget: personality-scaled cap per hour.
+		const perHourCap = Math.max(1, Math.round(1 + state.personality.e * 2 + state.character.impulsivity));
+		if (checks.recentProactive >= perHourCap) {
+			return {
+				decision: {
+					action: "think_only",
+					thought: top.thought,
+					reason: `proactive budget ${checks.recentProactive}/${perHourCap} this hour`,
+				},
+				state: habituated,
+			};
+		}
 	}
 
-	// A faint pull does not earn an interrupt: the thought stays inner life (recorded via the
-	// habituation trace and the beat's thought) instead of prying the conversation open. This is the
-	// "算了不说了" branch — what was missing while every not-blocked impulse became a reach_out.
-	const floor = convictionFloor(state);
-	if (!checks.userActive && top.thought.urgency < floor) {
-		return {
-			decision: { action: "think_only", thought: top.thought, reason: "faint-pull", advisory: review.advisory },
-			state: habituated,
-		};
-	}
-
-	// Not rate-limited. The impulse surfaces as a candidate to the model — whether to voice it, and how,
-	// is the model's call (P1). Advisory cautions travel with it.
+	// The impulse surfaces as a candidate to the model — whether to voice it, and how, is the
+	// model's call (P1).
 	return {
 		decision: {
 			action: "reach_out",
 			thought: top.thought,
 			channel: checks.userActive ? "reply" : "proactive",
-			reason: review.reason,
-			advisory: review.advisory,
+			reason: "surfaced",
 		},
 		state: habituated,
 	};

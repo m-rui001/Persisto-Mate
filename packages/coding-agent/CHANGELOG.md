@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased]
+
+## [1.5.0] - 2026-10-06
+
+
+### Added
+
+- **The `reminisce` tool: the companion can read its own past conversations.** Session transcripts (`~/.pi/agent/sessions/*.jsonl`) are shared with plain-pi sessions and full of harness noise, so the tool recognises the companion's own sessions by the `mate_core` section in their system prompt and reduces entries to user/companion text with local timestamps. Called without arguments it lists the days that hold conversations; given a date ("YYYY-MM-DD") it returns that day's dialogue, and an optional hour (0-23) zooms into one hour. The hour is the only coordinate: each hour is marked where it starts, and dialogue lines carry no per-minute stamps.
+
+### Changed
+
+- **The `<mate>` state block is injected as a separate hidden custom message instead of being prepended into the user's message text.** Custom messages reach the model wrapped in the harness's `<system-event>` envelope ("a harness event, not the user"), so the state can no longer be misread as something the user typed — the model had started answering to "you sent me a `<mate>` log". The block still rides the uncached tail, so it is paid exactly once per run as before.
+- **The companion's impulses carry no advisory catalogue.** The kernel's loop was simplified (see the mate package changelog): the impulse message now offers the thought itself, and the model — which already sees its own drives, the clock and its memories in the state block — decides whether and how to voice it. The heartbeat's `PreSendChecks` shrank accordingly.
+
 ## [1.4.0] - 2026-10-05
 
 ### Added

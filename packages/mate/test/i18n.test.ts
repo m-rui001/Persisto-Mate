@@ -122,20 +122,15 @@ describe("language invariants", () => {
 		}
 	});
 
-	it("localises the pre-send advisories without changing which ones fire", () => {
-		const checks: PreSendChecks = {
-			hour: 3,
-			userActive: false,
-			recentProactive: 0,
-			topic: "",
-			coldEnding: true,
-		};
+	it("localises the surfaced impulse without changing which one fires", () => {
+		const checks: PreSendChecks = { userActive: false, recentProactive: 0 };
 		const en = tick(state, NOW, checks, emptyMemory(), "en").decision;
 		const zh = tick(state, NOW, checks, emptyMemory(), "zh").decision;
 		if (en.action === "reach_out" && zh.action === "reach_out") {
-			expect(zh.advisory.length).toBe(en.advisory.length);
+			expect(zh.thought.kind).toBe(en.thought.kind);
 			expect(zh.thought.topic).toBe(en.thought.topic);
-			for (let i = 0; i < en.advisory.length; i++) expect(zh.advisory[i]).not.toBe(en.advisory[i]);
+			expect(zh.thought.urgency).toBe(en.thought.urgency);
+			expect(zh.thought.text).not.toBe(en.thought.text);
 		} else {
 			expect(zh.action).toBe(en.action);
 		}

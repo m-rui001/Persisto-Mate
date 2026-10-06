@@ -262,7 +262,7 @@ export type EffortBand = "autopilot" | "brief" | "normal" | "engaged";
 /** A thought produced by the autonomous thinking loop. */
 export interface Thought {
 	id: string;
-	kind: "curiosity" | "missing_user" | "pattern" | "promise" | "vulnerability" | "observation";
+	kind: "curiosity" | "missing_user" | "observation";
 	text: string;
 	urgency: number;
 	topic: string;

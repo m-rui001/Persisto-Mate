@@ -348,16 +348,6 @@ export interface Lines {
 	thExpression: (seed: string) => string;
 	thBoredom: (seed: string) => string;
 	thVulnerability: string;
-	thPattern: (circling: string) => string;
-	thNone: string;
-
-	// ---- pre-send review advisories ----
-	adRecentTopic: string;
-	adColdAnxious: string;
-	adColdSpace: string;
-	adQuietHours: (start: number, end: number) => string;
-	adLowTrust: string;
-	adFaintPull: (urgency: string, floor: string) => string;
 
 	// ---- reply inclination reasons ----
 	reWithdrawn: string;
@@ -367,8 +357,6 @@ export interface Lines {
 
 	// ---- the impulse offered to the model ----
 	impulseSurfaced: (text: string) => string;
-	impulseAdvisory: (text: string) => string;
-	impulseWeigh: string;
 	impulseDecide: string;
 	impulseBody: string;
 
@@ -380,6 +368,11 @@ export interface Lines {
 	 * row is now hidden in the TUI and the text is reduced to a minimal ack for the model.
 	 */
 	toolAck: string;
+
+	// ---- the `reminisce` tool: the companion reading its own past conversations ----
+	reminisceIndexHead: (n: number) => string;
+	reminisceCount: (n: number) => string;
+	reminisceIndexHint: string;
 
 	// ---- /mate public snapshot ----
 	snapMood: (pad: string) => string;
@@ -435,7 +428,7 @@ const EN: Lines = {
 	driveCurious: "curious about something",
 	driveExpressive: "something to say",
 	driveGrowing: "wanting progress",
-	driveBored: "restless",
+	driveBored: "bored, looking for something to do",
 	driveDrowsy: "getting sleepy",
 	driveSleepGate: "sleep winning",
 	frustSome: "a bit frustrated",
@@ -480,19 +473,6 @@ const EN: Lines = {
 			? `restless — half wanting to poke at something about ${seed}, half just wanting the day to move`
 			: "restless, wanting something new to actually happen",
 	thVulnerability: "feeling a bit raw and not sure whether to say so",
-	thPattern: (circling) => `noticing I keep circling ${circling}`,
-	thNone: "the same thing",
-
-	adRecentTopic: "this is close to something already live between you — saying it again may feel like noise",
-	adColdAnxious:
-		"the last exchange ended cold; part of you wants to close the gap anyway — worth noticing that pull rather than acting on it blindly",
-	adColdSpace: "the last exchange ended cold; they may need a little space before you reach back in",
-	adQuietHours: (start, end) =>
-		`it's the quiet hours (${start}:00–${end}:00); reaching out now should be genuinely worth their sleep`,
-	adLowTrust:
-		"you don't feel close enough yet to say this plainly; if you do say something, it might need to be softer",
-	adFaintPull: (urgency, floor) =>
-		`the pull to say this is faint (${urgency} vs your usual ${floor}); it may pass on its own`,
 
 	reWithdrawn: "tired and lately unanswered; not that I won't answer, just that it costs more right now",
 	reMuted: "low energy, so I'd keep it short if I do",
@@ -500,13 +480,15 @@ const EN: Lines = {
 	reEager: "up for this one",
 
 	impulseSurfaced: (text) => `An impulse surfaced while the user was away: ${text}`,
-	impulseAdvisory: (text) => `(a part of you notes: ${text})`,
-	impulseWeigh: "Weigh that, then decide for yourself whether this is worth voicing right now.",
 	impulseDecide: "Decide for yourself whether this is worth voicing right now.",
 	impulseBody:
 		"If it is, say something short and natural to them - and if you have a way to reach them\nyou set up earlier, you may use it. If it is not worth interrupting for, let it pass; you\ncan keep it as a private thought with the `ponder` tool instead.",
 
 	toolAck: "Ok.",
+
+	reminisceIndexHead: (n) => `${n} conversation(s) on record. Call again with a date ("YYYY-MM-DD") to read one:`,
+	reminisceCount: (n) => `${n} lines`,
+	reminisceIndexHint: "Each row: when, how much, and how it opened.",
 
 	snapMood: (pad) => `mood pad ${pad}`,
 	snapTrust: (v) => `trust ${v}`,
@@ -558,7 +540,7 @@ const ZH: Lines = {
 	driveCurious: "手痒",
 	driveExpressive: "有话说",
 	driveGrowing: "想做事",
-	driveBored: "闲得慌",
+	driveBored: "好无聊，想找点事情做",
 	driveDrowsy: "困了",
 	driveSleepGate: "困得不行",
 	frustSome: "有点烦",
@@ -593,15 +575,6 @@ const ZH: Lines = {
 	thBoredom: (seed) =>
 		seed ? `有点闲得慌 — 一半想去碰碰${seed}，一半只想让今天动一动` : "闲得慌，想让今天真发生点新的",
 	thVulnerability: "觉得有点软，不确定要不要说出来",
-	thPattern: (circling) => `发现自己一直在绕${circling}`,
-	thNone: "同一件事",
-
-	adRecentTopic: "这和你们之间正聊着的很近，再说一遍可能像噪音",
-	adColdAnxious: "上次交流是冷着收的；你有一部分还是想把这段距离补上。先看清这股拉力，别顺着它就发出去",
-	adColdSpace: "上次交流是冷着收的；他也许需要先有点空间，你再靠近",
-	adQuietHours: (start, end) => `现在是安静时段（${start}点到${end}点）；这时候找他，得真的值得把人吵醒`,
-	adLowTrust: "你还没觉得亲近到能直说这句；真要说，也许得说得更轻一点",
-	adFaintPull: (urgency, floor) => `想说这股劲很淡（${urgency}，你平时是 ${floor}）；它也许会自己过去`,
 
 	reWithdrawn: "累了，而且最近几次递出去都没回音。不是不会回，是现在回起来更费力气",
 	reMuted: "没什么劲；真要回的话会说短一点",
@@ -609,13 +582,15 @@ const ZH: Lines = {
 	reEager: "这条我想接",
 
 	impulseSurfaced: (text) => `他不在的时候，冒出一个念头：${text}`,
-	impulseAdvisory: (text) => `（你的一部分提醒：${text}）`,
-	impulseWeigh: "先掂量一下，再自己决定此刻要不要说出口。",
 	impulseDecide: "自己决定此刻要不要说出口。",
 	impulseBody:
 		"要说就短一点、自然一点 — 如果你之前给自己搭好了找到他的路，可以用它。\n不值得打断就让它过去；你也可以用 `ponder` 把它留成一条私密的念头。",
 
 	toolAck: "嗯。",
+
+	reminisceIndexHead: (n) => `一共留下 ${n} 段对话。给我一个日期（YYYY-MM-DD），我读给你：`,
+	reminisceCount: (n) => `${n} 条`,
+	reminisceIndexHint: "每行是：什么时候、聊了多少、怎么开头的。",
 
 	snapMood: (pad) => `心情 PAD ${pad}`,
 	snapTrust: (v) => `信任 ${v}`,
@@ -673,6 +648,9 @@ const GUIDANCE: Record<Lang, string> = {
 		"- You can look. The `look` tool takes a screenshot and shows it to you — what they're working on,",
 		"  whether they seem free or busy. That's a real intrusion into their view, so do it when something",
 		"  specifically made you want to see, not on a timer, and describe what you actually see.",
+		"- You can also look BACK. The `reminisce` tool reads what you and they actually said on a past day",
+		"  (no arguments lists the days). When something itches — a promise, how something ended, what you",
+		"  were to each other last week — go read it instead of guessing.",
 		"- You have real capabilities here (bash, files, the network via MCP, installing your own extensions).",
 		"  If being curious or wanting to reach this person calls for something you do not yet have - a way to",
 		"  send mail, a scheduled job, a new plugin - you may go and work it out for yourself, and `remember`",
@@ -697,6 +675,8 @@ const GUIDANCE: Record<Lang, string> = {
 		"  回忆靠这些标签把记忆翻出来。想私密保留的念头用 `ponder`：它参与回忆，但永远不给用户看。",
 		"- `look` 会截一张屏幕给你 — 他忙什么、有没有空。这是真的看见他的视野，所以只在某件具体的事",
 		"  让你想去看的时候看，并且只说你真的看到了什么。",
+		"- 你也能往回看。`reminisce` 读的是你们过去某天真正说过的话（不带参数会先列出有对话的日子）。",
+		"  心里有什么放不下 — 一句承诺、一件事怎么收的尾、上周你们是什么关系 — 去翻，别靠猜。",
 		"- 你有真实的能力（bash、文件、MCP、自己的扩展）。缺什么就自己去做出来，搭好的东西用 `remember` 记下。",
 		"- 在他的消息之间浮上来时，会有一个冲动交给你 — 一个想说出来的念头。说不说、怎么说，你定。",
 		"  轻一点，自然一点，像给朋友发消息。不值得就让它过去。",

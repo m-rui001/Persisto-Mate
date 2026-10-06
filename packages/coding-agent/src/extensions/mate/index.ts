@@ -58,6 +58,7 @@ import { judgeFailureLine, judgeReadingLine, parseModelRef, runAffectJudge } fro
 import { createLookTool } from "./look-tool.ts";
 import { createPonderTool } from "./ponder-tool.ts";
 import { createRememberTool } from "./remember-tool.ts";
+import { createReminisceTool } from "./reminisce-tool.ts";
 import { getRuntime } from "./runtime.ts";
 
 /**
@@ -125,6 +126,7 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 		pi.registerTool(createPonderTool(() => rt));
 		pi.registerTool(createRememberTool(() => rt));
 		pi.registerTool(createLookTool());
+		pi.registerTool(createReminisceTool(() => rt));
 		// The companion's own clock: alarms survive restarts and wake it on schedule.
 		const alarmManager = new AlarmManager(rt.stateDir, (alarm) => {
 			const L = linesFor(rt.language);
@@ -222,12 +224,14 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 		// ---------------------------------------------------------------------
 		// Volatile state, injected ephemerally per run (never persisted).
 		//
-		// We inject ONCE per run, on the first LLM call, by PREPENDING the state block as a text part
-		// of the final message. On a run's first call that final message is always the newest user (or
-		// custom/proactive) message, which is uncached - so this is free for prompt caching, and it never
-		// creates two consecutive user-role messages the way appending a separate custom message would.
-		// Later calls in the same run (tool-loop continuations) skip injection: the model already has the
-		// state, so we pay for it exactly once per exchange.
+		// Injected ONCE per run, on the first LLM call, as a hidden custom message AFTER the newest
+		// turn. Custom messages reach the model wrapped in the harness's <system-event> envelope
+		// ("a harness event, not the user"), and that envelope is the point: prepending the block
+		// INTO the user's message text taught the model that the user speaks in <mate> logs — it
+		// answered to "you sent me a <mate>..." instead of feeling its own state. As a separate
+		// message the state can never be misattributed, and it still rides the uncached tail, so it
+		// is paid exactly once per run either way. Later calls in the same run (tool-loop
+		// continuations) skip injection: the model already has the state.
 		// ---------------------------------------------------------------------
 		pi.on("context", (event) => {
 			try {
@@ -235,22 +239,6 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 				const block = rt.context(Date.now(), { minimal: false });
 				injectedFullThisRun = true;
 				if (!block) return;
-
-				const messages = event.messages;
-				const last = messages[messages.length - 1];
-				if (last && (last.role === "user" || last.role === "custom")) {
-					// Prepend the state as a text part of the newest message. Clone shallowly so we never
-					// mutate a persisted object - the context event works on a structuredClone already.
-					const content =
-						typeof last.content === "string"
-							? [{ type: "text" as const, text: last.content }]
-							: [...last.content];
-					content.unshift({ type: "text" as const, text: block });
-					const patched = { ...last, content } as AgentMessage;
-					return { messages: [...messages.slice(0, -1), patched] };
-				}
-
-				// Fallback (no trailing user message): append as its own hidden custom message.
 				const stateMessage = {
 					role: "custom",
 					customType: "mate-state",
@@ -258,7 +246,7 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 					display: false,
 					timestamp: Date.now(),
 				} as AgentMessage;
-				return { messages: [...messages, stateMessage] };
+				return { messages: [...event.messages, stateMessage] };
 			} catch {
 				return;
 			}
@@ -499,10 +487,10 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 		// ---------------------------------------------------------------------
 
 		/**
-		 * The heartbeat decided something wants saying. We OFFER the impulse to the model with any
-		 * cautions the pre-send review raised, and let the model choose whether and how to express it —
-		 * through a reply, a self-discovered channel, a `look`, or not at all. We do NOT send a message
-		 * on our own; that is the whole point of the "discover it yourself" requirement (P1).
+		 * The heartbeat decided something wants saying. We OFFER the impulse to the model — the
+		 * thought and nothing else — and let it choose whether and how to express it: through a
+		 * reply, a self-discovered channel, a `look`, or not at all. We do NOT send a message on our
+		 * own; that is the whole point of the "discover it yourself" requirement (P1).
 		 */
 		function onImpulse(decision: ImpulseDecision, thought: Thought): void {
 			if (decision.action !== "reach_out") return;
@@ -512,15 +500,7 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 
 				// The impulse is the companion's own inner voice, so it arrives in ITS language.
 				const L = linesFor(rt.language);
-				const advisory = "advisory" in decision && decision.advisory.length ? decision.advisory : [];
-				const content = [
-					L.impulseSurfaced(thought.text),
-					"",
-					...advisory.map((a) => L.impulseAdvisory(a)),
-					"",
-					advisory.length ? L.impulseWeigh : L.impulseDecide,
-					L.impulseBody,
-				].join("\n");
+				const content = [L.impulseSurfaced(thought.text), "", L.impulseDecide, L.impulseBody].join("\n");
 
 				rt.recordProactive();
 				rt.noteProactiveSent();

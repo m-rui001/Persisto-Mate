@@ -1,9 +1,9 @@
 /**
- * The idle loop's habituation. `habituate()` has always RETURNED a trace; the bug was that the tick
- * dropped it, so every beat re-met every topic as brand new: the same impulse arriving again and
- * again at full strength ("第五次路过"), and `kernel.topicSaturation` — an input to boredom — reading
- * a store nothing ever wrote. These tests pin the write-back, the purity of the input state, and the
- * pruning that keeps the record from being a mean over dead entries.
+ * The idle loop after the simplification: three thought channels (想你 / 好奇或无聊 / 有话想说),
+ * urgency taken straight from the drive, and NO conviction floor — the only gates left in tick()
+ * are the two hard hygiene stops (unanswered-overture tolerance, hourly proactive budget). The
+ * habituation write-back pins survive from the original bug (the tick dropping the trace, so every
+ * beat re-met every topic as brand new).
  */
 
 import { describe, expect, it } from "vitest";
@@ -11,23 +11,27 @@ import { birth } from "../src/birth.ts";
 import { generateThoughts, habituate, type PreSendChecks, tick } from "../src/daemon.ts";
 import { emptyMemory } from "../src/memory.ts";
 import { HABITUATION_TAU } from "../src/params.ts";
+import type { MateState } from "../src/types.ts";
 
 const HOUR = 3_600_000;
 
-function checks(now: number): PreSendChecks {
-	return {
-		hour: new Date(now).getUTCHours(),
-		userActive: false,
-		recentProactive: 0,
-		topic: "",
-		coldEnding: false,
-	};
+function checks(now: number, overrides: Partial<PreSendChecks> = {}): PreSendChecks {
+	void now;
+	return { userActive: false, recentProactive: 0, ...overrides };
 }
 
-/** A companion alone for three hours: `missing_user` is guaranteed to generate a thought. */
-function silenceState() {
+/** Alone for three hours with the connection drive already past its band. */
+function silenceState(): { now: number; state: MateState } {
 	const now = 30 * HOUR;
-	return { now, state: { ...birth({ seed: 7, born: 0 }), lastInteraction: now - 3 * HOUR } };
+	const base = birth({ seed: 7, born: 0 });
+	return {
+		now,
+		state: {
+			...base,
+			lastInteraction: now - 3 * HOUR,
+			drives: { ...base.drives, connection: 0.9 },
+		},
+	};
 }
 
 /** The chosen thought, when the beat thought anything at all. */
@@ -76,33 +80,62 @@ describe("daemon: tick persists the habituation of what it thought", () => {
 	});
 });
 
-/**
- * The faint-pull gate and the voiced-topic saturation. A real impulse can be a smile, a note to
- * self, or "算了不说了" — only a conviction above the floor earns an interrupt, and a topic that was
- * just VOICED does not come straight back (the runtime marks its trace saturated; habituate()
- * consumes it).
- */
-describe("daemon: interrupts are earned", () => {
-	it("a faint pull stays inner life (think_only, reason faint-pull)", () => {
-		const { now, state } = silenceState(); // 3h of silence: a real but weak pull
+describe("daemon: thoughts come straight from the drives", () => {
+	it("urgency IS the drive value, not a coefficient stack", () => {
+		const { now, state } = silenceState();
+		const thoughts = generateThoughts(state, now, emptyMemory(), "en");
+		const missing = thoughts.find((t) => t.thought.kind === "missing_user");
+		expect(missing).toBeDefined();
+		expect(missing!.rawUrgency).toBe(0.9);
+	});
+
+	it("a thought exists exactly when the drive is past the 0.6 band", () => {
+		const now = 30 * HOUR;
+		const base = birth({ seed: 7, born: 0 });
+		const quiet = {
+			...base,
+			lastInteraction: now - 3 * HOUR,
+			drives: { ...base.drives, connection: 0.5, curiosity: 0.5 },
+		};
+		expect(generateThoughts(quiet, now, emptyMemory(), "en")).toHaveLength(0);
+	});
+
+	it("no floor: even a modest pull surfaces (the model decides, not a formula)", () => {
+		const { now, state } = silenceState();
 		const result = tick(state, now, checks(now), emptyMemory(), "en");
+		expect(result.decision.action).toBe("reach_out");
+		if (result.decision.action === "reach_out") expect(result.decision.reason).toBe("surfaced");
+	});
+});
+
+describe("daemon: the two hard hygiene stops", () => {
+	it("stops reaching into silence past the unanswered tolerance", () => {
+		const { now, state } = silenceState();
+		const ignored = { ...state, relationship: { ...state.relationship, unanswered: 3 } };
+		const result = tick(ignored, now, checks(now), emptyMemory(), "en");
 		expect(result.decision.action).toBe("think_only");
-		if (result.decision.action === "think_only") expect(result.decision.reason).toBe("faint-pull");
+		if (result.decision.action === "think_only") {
+			expect(result.decision.reason).toContain("tolerance");
+		}
 		// The thought is still kept as inner life via its habituation trace.
 		expect(Object.keys(result.state.habituation)).toHaveLength(1);
 	});
 
-	it("a strong pull earns the interrupt (reach_out)", () => {
-		const { now } = silenceState();
-		const loud = {
-			...birth({ seed: 7, born: 0 }),
-			character: { ...birth({ seed: 7, born: 0 }).character, impulsivity: 1 },
-			personality: { ...birth({ seed: 7, born: 0 }).personality, e: 1 },
-			drives: { ...birth({ seed: 7, born: 0 }).drives, curiosity: 0 },
-			lastInteraction: now - 12 * HOUR,
-		};
-		const result = tick(loud, now, checks(now), emptyMemory(), "en");
+	it("stops at the hourly proactive budget", () => {
+		const { now, state } = silenceState();
+		const result = tick(state, now, checks(now, { recentProactive: 9 }), emptyMemory(), "en");
+		expect(result.decision.action).toBe("think_only");
+		if (result.decision.action === "think_only") {
+			expect(result.decision.reason).toContain("budget");
+		}
+	});
+
+	it("an active conversation is never rate-gated", () => {
+		const { now, state } = silenceState();
+		const ignored = { ...state, relationship: { ...state.relationship, unanswered: 9 } };
+		const result = tick(ignored, now, checks(now, { userActive: true, recentProactive: 9 }), emptyMemory(), "en");
 		expect(result.decision.action).toBe("reach_out");
+		if (result.decision.action === "reach_out") expect(result.decision.channel).toBe("reply");
 	});
 
 	it("a voiced (saturated) topic comes back at well under half strength", () => {
