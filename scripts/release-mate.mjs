@@ -38,9 +38,14 @@ if (bump !== "patch" && bump !== "minor") {
 }
 
 const repoRoot = join(import.meta.dirname, "..");
+// npm/npx are .cmd shims on Windows and need a shell; git/gh/bash are real executables and must
+// run WITHOUT one — shell mode does not quote args, so a multi-word commit message would shatter
+// into pathspecs.
+const SHELL_CMDS = new Set(["npm", "npx"]);
 const run = (cmd, args, opts = {}) => {
 	console.log(`\n$ ${cmd} ${args.join(" ")}`);
-	return execFileSync(cmd, args, { cwd: repoRoot, stdio: "inherit", shell: process.platform === "win32", ...opts });
+	const shell = opts.shell ?? (SHELL_CMDS.has(cmd) && process.platform === "win32");
+	return execFileSync(cmd, args, { cwd: repoRoot, stdio: "inherit", ...opts, shell });
 };
 const readJson = (p) => JSON.parse(readFileSync(p, "utf8"));
 

@@ -6,11 +6,13 @@
 
 - The `context` handler set the "state injected for this run" flag before checking whether the projection produced a block, so one empty/failed projection suppressed injection for every later LLM call in the same run. The flag is now set only when the state message is actually added.
 
-## [Unreleased]
+## [1.5.2] - 2026-10-06
 
 ### Added
 
 - Marketplace listings for the two published extension hosts. The pi plugin package now declares the `pi-package` npm keyword, making `@m-rui/pi-mate-companion` eligible for discovery in the pi.dev package gallery (the gallery's stated discovery mechanism). The SillyTavern extension's published repo now stamps its `manifest.json` version from the package version (was hardcoded) and ships a MIT LICENSE, meeting the SillyTavern-Content index requirement for a libre license.
+
+## [Unreleased]
 
 ## [1.5.0] - 2026-10-06
 
