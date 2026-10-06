@@ -1,0 +1,12 @@
+{
+	"name": "@m-rui/st-mate-companion",
+	"version": "1.0.0",
+	"description": "Persisto Mate companion as a SillyTavern (UI) extension: a learned body clock, real offline sleep, its own memory and feelings.",
+	"type": "module",
+	"license": "MIT",
+	"private": true,
+	"scripts": {
+		"build": "node scripts/build.mjs",
+		"publish": "node scripts/publish.mjs"
+	}
+}

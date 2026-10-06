@@ -13,12 +13,17 @@ import {
 import { API } from "typescript/unstable/sync";
 
 const ignoredDirectories = new Set([".git", "coverage", "dist", "node_modules"]);
+// The SillyTavern extension imports host modules (.js) that exist only inside SillyTavern's page
+// (scripts/, script.js) at the layout ST gives third-party extensions. They are never resolved from
+// this repo — the bundler keeps the specifiers verbatim — so the compiled-artifact rule cannot apply.
+const exemptDirectories = new Set(["packages/st-mate-extension/src"]);
 const files = [];
 
 function collectTypescriptFiles(directory) {
 	for (const entry of readdirSync(directory, { withFileTypes: true })) {
 		if (entry.isDirectory()) {
-			if (!ignoredDirectories.has(entry.name)) {
+			const path = relative(".", join(directory, entry.name)).replace(/\\/g, "/");
+			if (!ignoredDirectories.has(entry.name) && !exemptDirectories.has(path)) {
 				collectTypescriptFiles(join(directory, entry.name));
 			}
 			continue;

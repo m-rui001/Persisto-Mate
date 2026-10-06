@@ -1,0 +1,10 @@
+{
+	"display_name": "Persisto Mate",
+	"loading_order": 100,
+	"js": "index.js",
+	"css": "",
+	"author": "m-rui001",
+	"version": "1.0.0",
+	"homePage": "https://github.com/m-rui001/mate-sillytavern",
+	"auto_update": true
+}
