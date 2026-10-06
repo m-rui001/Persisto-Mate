@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Marketplace listings for the two published extension hosts. The pi plugin package now declares the `pi-package` npm keyword, making `@m-rui/pi-mate-companion` eligible for discovery in the pi.dev package gallery (the gallery's stated discovery mechanism). The SillyTavern extension's published repo now stamps its `manifest.json` version from the package version (was hardcoded) and ships a MIT LICENSE, meeting the SillyTavern-Content index requirement for a libre license.
+
 ## [1.5.0] - 2026-10-06
 
 
