@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.5.1] - 2026-10-06
 
 ### Added
 
@@ -13,6 +13,8 @@
 - The density matrix can no longer leave the positive-semidefinite cone: the diagonal-relaxation and coherence-injection steps in `transition()` could leave `|rho_ij| > sqrt(rho_ii*rho_jj)` (trace 1, but a negative eigenvalue). New `quantum.clampCoherences()` scales offending cells back onto the 2x2 principal-minor bound and runs after `hermitise()`.
 - Offline catch-up applied the sleep-window phase reset at the window's START, so the window's hours were then integrated as wake time: a 24h gap woke the body with rest ≈ 0.5 after "sleeping". The reset now lands at the window's END, so the night's build-up is wiped and waking leaves rest near zero plus the hours since the window ended.
 - `context.q()` rendered 0 as `.0` and 1 as `1.0`; zeros and integers now render bare (`0`, `1`, `.4` style unchanged).
+
+## [Unreleased]
 
 ## [1.5.0] - 2026-10-06
 

@@ -87,6 +87,9 @@ for (const pkg of ["mate", "coding-agent"]) {
 
 // --- 2. lockstep bump -------------------------------------------------------
 
+// Stale binary archives carry a package.json at the OLD version and are picked up by the
+// workspace scan, which then fails the lockstep check. build-binaries.sh recreates the dir.
+rmSync(join(repoRoot, "packages", "coding-agent", "binaries"), { recursive: true, force: true });
 run("npm", ["run", `version:${bump}`]);
 // The private hosts share the release version too: their package.json version is what the
 // publish scripts stamp into the assembled manifests.
