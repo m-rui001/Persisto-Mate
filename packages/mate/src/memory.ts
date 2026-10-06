@@ -84,7 +84,8 @@ const MAX_TOPICS = 3;
  * strength, absent reinforcement. Deliberately on the order of DAYS, not hours: retrieval can
  * de-weight a stale node quickly (salience handles the fast "just now" layer), but true forgetting —
  * a memory falling below the prune floor in `consolidate` — should take a companion's realistic
- * timescale. A neutral one-off note fades to the 0.08 floor in roughly three weeks if never recalled
+ * timescale. A neutral one-off note at the default importance (strength 0.4) fades to the 0.08 floor
+ * in roughly eight days if never recalled
  * again; emotional charge slows that by up to 4× (see `protectedTau`), and the testing effect
  * (`rehearse`) stalls the clock entirely. This matches the Ebbinghaus/ACT-R picture: unrehearsed
  * traces decay over days, retrieved and charged ones persist.

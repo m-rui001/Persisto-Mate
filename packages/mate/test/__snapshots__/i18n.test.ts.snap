@@ -5,7 +5,7 @@ exports[`language invariants > freezes the English surfaces (they ride the promp
 nature: O.53 C.78 E.4 A.3 N.44
 character: attachmentAnxiety .35, empathy .61, curiosity .6, rumination .41
 beliefs: others are trustworthy .4, the world is mostly benign .4
-baseline: .0,.0,.0
+baseline: 0,0,0
 
 <mate>
 (your inner state, not the user's words)
@@ -13,7 +13,7 @@ time: now 17:00, UTC, silent 9h (feels long)
 state: settled | trust sadness anticipation anger disgust
 drives: curious about something, getting sleepy
 toward the user: trust in you .39 close .01 respect .4 frustrated
-self: said 12.0 worth .54 ease .49 anxious .35 tired .4
+self: said 12 worth .54 ease .49 anxious .35 tired .4
 inclination: eager — up for this one. you choose.
 </mate>
 

@@ -37,6 +37,7 @@ import {
 import {
 	applyKick,
 	buildHamiltonian,
+	clampCoherences,
 	clone,
 	decohere,
 	evolveUnitary,
@@ -778,6 +779,7 @@ export function transition(state: MateState, event: MateEvent, dtOverride?: numb
 		}
 	}
 	hermitise(rho);
+	clampCoherences(rho);
 	normalise(rho);
 
 	// 4: PAD centre as a quantum expectation value Tr(rho A). The diagonal term is the classical
@@ -873,6 +875,15 @@ export function transition(state: MateState, event: MateEvent, dtOverride?: numb
 	}
 	const drives = updateDrives(state.drives, character, dt, satisfied);
 	const awareness = updateAwareness(state.awareness, { ...state, character }, dt, presence);
+	// A consolidated thought is the satiety half of the boredom loop: thoughtSaturation damps
+	// boredomOf and decays on the awareness clock, but until now nothing ever RAISED it, so the
+	// (1 − saturation) factor was a constant 1 and the damper was decorative. A thought the
+	// kernel actually produced (beat thought, remember/ponder, dream) saturates it by 0.2 — half a
+	// message's expression discharge (0.4), because a self-thought is a weaker episode than an
+	// exchange. Discrete per event, so catch-up subdivision is unaffected.
+	if (event.kind === "self_observation") {
+		awareness.thoughtSaturation = clamp01(awareness.thoughtSaturation + 0.2);
+	}
 
 	// The learned bio-clock: contact teaches the clock WHEN this user lives. Only real user
 	// messages move it — a proactive message or a judge reading is the companion's own act.

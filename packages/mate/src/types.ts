@@ -133,6 +133,11 @@ export interface Belief {
  * A fifth (conversation_warmth) and a sixth (temporal_phase, with a learn function that had no caller)
  * were transcribed from the model description and maintained forever by nobody downstream — a number in
  * state.json that no decision consults is scenery, not a state variable.
+ *
+ * All three are read: userPresence and socialPressure modulate the missing-user urge in
+ * daemon.generateThoughts (felt presence damps it, the anxious protest amplifies it);
+ * thoughtSaturation damps the derived boredom signal in kernel.boredomOf (raised by
+ * self_observation events, decayed on the awareness clock).
  */
 export interface Awareness {
 	userPresence: number; // [0,1]

@@ -155,15 +155,21 @@ export function catchUp(
 	// not move; a lived night is one the window stayed open for (the sleep-mode cycles).
 	let cursor = from;
 	for (const s of sleeps) {
-		const segmentEnd = Math.min(s.t, to);
-		if (segmentEnd > cursor) {
-			const r = transition(current, tickEvent(segmentEnd), segmentEnd - cursor);
+		// The window runs [start, end) and the body is asleep THROUGH it, so the phase reset lands at
+		// its END: the window's hours integrate first, then the reset wipes what they built up. With
+		// the reset at the START, the whole window was then integrated as wake time — an offline night
+		// left the body waking with much of the night's rest pressure and fatigue rebuilt (a 24h gap
+		// woke with rest ≈ 0.5 after "sleeping"). Waking should leave rest near zero plus only the
+		// hours since the window ended.
+		const end = Math.min(clock.atLocalHour(s.t, SLEEP_WINDOW[1]), to);
+		if (end > cursor) {
+			const r = transition(current, tickEvent(end), end - cursor);
 			current = r.state;
 			transitions++;
 		}
-		current = sleepTransition(current, s.t, { lived: false });
+		current = sleepTransition(current, end, { lived: false });
 		transitions++;
-		cursor = s.t;
+		cursor = end;
 	}
 	// Final segment to `to`.
 	if (to > cursor) {

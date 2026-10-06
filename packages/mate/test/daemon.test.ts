@@ -89,6 +89,33 @@ describe("daemon: thoughts come straight from the drives", () => {
 		expect(missing!.rawUrgency).toBe(0.9);
 	});
 
+	it("felt presence damps the missing-user urge; the anxious protest amplifies it", () => {
+		const { now, state } = silenceState();
+		// Still feeling the user in the room halves the urge: contact that is felt is not absent.
+		const present = { ...state, awareness: { ...state.awareness, userPresence: 0.9 } };
+		const damped = generateThoughts(present, now, emptyMemory(), "en").find((t) => t.thought.kind === "missing_user");
+		expect(damped!.rawUrgency).toBeCloseTo(0.9 * (1 - 0.5 * 0.9), 10);
+		// The protest under silence (negative socialPressure) amplifies it, scaled by the anxious
+		// attachment it belongs to.
+		const protesting = {
+			...state,
+			character: { ...state.character, attachmentAnxiety: 0.5 },
+			awareness: { ...state.awareness, socialPressure: -0.8 },
+		};
+		const amplified = generateThoughts(protesting, now, emptyMemory(), "en").find(
+			(t) => t.thought.kind === "missing_user",
+		);
+		expect(amplified!.rawUrgency).toBeCloseTo(0.9 * (1 + 0.5 * 0.8), 10);
+		// A secure body under the same protest is barely moved.
+		const secure = {
+			...state,
+			character: { ...state.character, attachmentAnxiety: 0 },
+			awareness: { ...state.awareness, socialPressure: -0.8 },
+		};
+		const flat = generateThoughts(secure, now, emptyMemory(), "en").find((t) => t.thought.kind === "missing_user");
+		expect(flat!.rawUrgency).toBe(0.9);
+	});
+
 	it("a thought exists exactly when the drive is past the 0.6 band", () => {
 		const now = 30 * HOUR;
 		const base = birth({ seed: 7, born: 0 });

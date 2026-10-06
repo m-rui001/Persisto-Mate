@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- The two awareness axes that had writers but no reader now do their documented work in the one thought that is about the user: in `daemon.generateThoughts`, felt `userPresence` halves the missing-user urge (contact that is still felt is not absent), and negative `socialPressure` — the anxious attachment system's protest under silence — amplifies it in proportion to `attachmentAnxiety`. Both multipliers are 1 at birth, so urgency is still exactly the drive value for a companion with no contact history.
+- `thoughtSaturation` has a source: `self_observation` events (beat thoughts, `remember`/`ponder`, dreams) raise it by 0.2 — half a message's expression discharge — so the `(1 − saturation)` damper in `boredomOf` is no longer a constant 1.
+
+### Fixed
+
+- `quantum.evolveUnitary` wrote the transposed cell as neither the conjugate nor the correct phase of the rotated one (Hermiticity was only restored because `hermitise()` ran afterwards); it now writes the exact conjugate.
+- The density matrix can no longer leave the positive-semidefinite cone: the diagonal-relaxation and coherence-injection steps in `transition()` could leave `|rho_ij| > sqrt(rho_ii*rho_jj)` (trace 1, but a negative eigenvalue). New `quantum.clampCoherences()` scales offending cells back onto the 2x2 principal-minor bound and runs after `hermitise()`.
+- Offline catch-up applied the sleep-window phase reset at the window's START, so the window's hours were then integrated as wake time: a 24h gap woke the body with rest ≈ 0.5 after "sleeping". The reset now lands at the window's END, so the night's build-up is wiped and waking leaves rest near zero plus the hours since the window ended.
+- `context.q()` rendered 0 as `.0` and 1 as `1.0`; zeros and integers now render bare (`0`, `1`, `.4` style unchanged).
+
 ## [1.5.0] - 2026-10-06
 
 

@@ -31,10 +31,10 @@ const NEUTRAL_CHARACTER: Character = {
 	empathy: 0.6,
 };
 
-/** Draw a Big Five personality around 0.5 with sd ~0.15, in [0.05, 0.95]. */
+/** Draw a Big Five personality uniform in [0.2, 0.8] (sd ≈ 0.17): no two companions start identical. */
 export function drawPersonality(seed: number): { personality: Personality; seed: number } {
 	const { values, seed: s2 } = drawMany(seed, 5);
-	// Irwin-Hall-ish: average two uniforms for a soft triangular distribution, then scale.
+	// One uniform, scaled toward the centre: every dimension stays clearly inside [0,1].
 	const tri = (i: number) => clamp01(0.5 + (values[i] - 0.5) * 0.6);
 	return {
 		personality: { o: tri(0), c: tri(1), e: tri(2), a: tri(3), n: tri(4) },

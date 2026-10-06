@@ -91,10 +91,15 @@ export interface StableContextOptions {
 /** Lookup form of kernel.DRIFTING_TRAITS, so the per-trait filter stays a set probe. */
 const DRIFTING_TRAIT_SET: ReadonlySet<string> = new Set(DRIFTING_TRAITS);
 
-/** Round to 2 decimals and drop trailing zero, e.g. 0.40 -> ".4". */
+/** Round to 2 decimals, strip trailing zeros and the leading zero: 0.40 -> ".4", 1 -> "1", 0 -> "0". */
 function q(x: number): string {
 	const r = Math.round(x * 100) / 100;
-	return r.toFixed(2).replace(/^0/, "").replace(/0$/, "").replace(/\.$/, "") || "0";
+	const s = r
+		.toFixed(2)
+		.replace(/0+$/, "")
+		.replace(/\.$/, "")
+		.replace(/^(-?)0\./, "$1.");
+	return s === "-0" || s === "-.0" ? "0" : s;
 }
 
 /**

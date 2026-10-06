@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The `context` handler set the "state injected for this run" flag before checking whether the projection produced a block, so one empty/failed projection suppressed injection for every later LLM call in the same run. The flag is now set only when the state message is actually added.
+
 ## [1.5.0] - 2026-10-06
 
 

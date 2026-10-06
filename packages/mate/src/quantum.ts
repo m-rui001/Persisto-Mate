@@ -109,6 +109,33 @@ export function normalise(rho: DensityMatrix): DensityMatrix {
 }
 
 /**
+ * Enforce positivity of every 2x2 principal minor: |rho_ij| <= sqrt(rho_ii * rho_jj).
+ *
+ * Necessary for a positive-semidefinite rho. The kernel needs it because the diagonal-relaxation
+ * step (transition step b) moves populations toward the net-emotion distribution WITHOUT rescaling
+ * the coherences, and fresh coherence is injected against those new populations — so after both,
+ * an off-diagonal written for the old populations can exceed sqrt of the new diagonal product and
+ * the matrix quietly leaves the quantum-probability domain (a negative eigenvalue) while its trace
+ * still reads 1. Scaling the offending cell down preserves Hermiticity and the trace, and only
+ * touches cells that were already inconsistent.
+ */
+export function clampCoherences(rho: DensityMatrix): DensityMatrix {
+	for (let i = 0; i < N; i++) {
+		for (let j = i + 1; j < N; j++) {
+			const bound = Math.sqrt(Math.max(rho[i][i][0], 0) * Math.max(rho[j][j][0], 0));
+			const [re, im] = rho[i][j];
+			const m = Math.hypot(re, im);
+			if (m > bound && m > 0) {
+				const k = bound / m;
+				rho[i][j] = [re * k, im * k];
+				rho[j][i] = [re * k, -im * k];
+			}
+		}
+	}
+	return rho;
+}
+
+/**
  * Apply unitary evolution under a diagonal Hamiltonian for dt.
  *
  * For diagonal H, exp(-iHt) is diagonal with phases e^{-i E_i t}, so
@@ -130,9 +157,9 @@ export function evolveUnitary(rho: DensityMatrix, dt: number, intensities: numbe
 			const c = Math.cos(theta);
 			const s = Math.sin(theta);
 			const [re, im] = rho[i][j];
-			// multiply (re + i*im) by (c + i*s)
+			// multiply (re + i*im) by (c + i*s); the transposed cell is its exact conjugate.
 			rho[i][j] = [re * c - im * s, re * s + im * c];
-			rho[j][i] = [re * c + im * s, -(re * s - im * c)];
+			rho[j][i] = [re * c - im * s, -(re * s + im * c)];
 		}
 	}
 	return rho;

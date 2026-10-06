@@ -5,8 +5,9 @@
  * pre-send review that self-blocks 98.5% of impulses. Two things are preserved and two are changed:
  *
  *   PRESERVED  - thinking is graph/state-driven, not scheduled. The companion writes because it
- *                thought something worth sharing, not because N hours elapsed. social_pressure
- *                going negative under silence is the impulse; drives and habituation shape it.
+ *                thought something worth sharing, not because N hours elapsed. The idle gate in the
+ *                derived boredom signal (kernel.boredomOf) and the drives shape it; awareness
+ *                userPresence/socialPressure modulate the missing-user urge (see generateThoughts).
  *   PRESERVED  - the hard hygiene stops. Two objective rate/cost limits — the hourly proactive
  *                budget and the unanswered-overture tolerance — protect the USER from a runaway
  *                loop. They are the kernel's only suppression authority left.
@@ -132,9 +133,28 @@ export function generateThoughts(
 
 	// 想你: the connection drive has built past its band under silence. The extra hour floor only
 	// keeps a just-finished exchange from thinking "I miss you" at goodbye.
+	//
+	// The two awareness axes do their documented work here and nowhere else — this is the one
+	// thought that is ABOUT the user, so it is where "is the user here" belongs:
+	//   - userPresence (feeling them in the room) halves the urge: contact that is still felt is
+	//     not absent (Bowlby's protest is about a wanted-but-ABSENT figure). Presence decays on the
+	//     awareness clock, so the damp wears off as the silence becomes real.
+	//   - socialPressure (the protest under silence, negative, contact resets it) amplifies the
+	//     urge in proportion to attachmentAnxiety — the anxious attachment system is the one that
+	//     protests, the same shape kernel.updateRelationship already gives frustration.
+	// Both multipliers are 1 at birth (presence 0, pressure 0), so urgency is still exactly the
+	// drive value for a companion with no contact history.
 	const silenceH = (now - state.lastInteraction) / 3_600_000;
 	if (silenceH > 1 && drives.connection >= 0.6) {
-		mk("missing_user", L.thMissing(seedLabel), drives.connection, `silence:${Math.floor(silenceH / 3)}`);
+		const presenceDamp = 1 - 0.5 * state.awareness.userPresence;
+		const protest = Math.max(0, -state.awareness.socialPressure);
+		const anxiousProtest = 1 + state.character.attachmentAnxiety * protest;
+		mk(
+			"missing_user",
+			L.thMissing(seedLabel),
+			drives.connection * presenceDamp * anxiousProtest,
+			`silence:${Math.floor(silenceH / 3)}`,
+		);
 	}
 
 	// 好奇或无聊: two flavours of seeking stimulation — a specific unknown, or nothing new going on

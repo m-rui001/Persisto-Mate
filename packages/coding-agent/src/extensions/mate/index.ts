@@ -237,7 +237,8 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 			try {
 				if (injectedFullThisRun) return; // already carrying state for this run
 				const block = rt.context(Date.now(), { minimal: false });
-				injectedFullThisRun = true;
+				// Only mark the run as served when a block actually exists — otherwise a failed/empty
+				// projection would suppress injection for every later call in the same run too.
 				if (!block) return;
 				const stateMessage = {
 					role: "custom",
@@ -246,6 +247,7 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 					display: false,
 					timestamp: Date.now(),
 				} as AgentMessage;
+				injectedFullThisRun = true;
 				return { messages: [...event.messages, stateMessage] };
 			} catch {
 				return;
