@@ -48,6 +48,7 @@ writeFileSync(
 			description: pkg.description,
 			type: "module",
 			license: pkg.license,
+			keywords: pkg.keywords,
 			main: "./dist/index.js",
 			pi: pkg.pi,
 			files: pkg.files,

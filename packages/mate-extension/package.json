@@ -4,6 +4,9 @@
 	"description": "Persisto Mate companion as an installable pi extension: a learned body clock, real sleep and dreams, its own memory and feelings.",
 	"type": "module",
 	"license": "MIT",
+	"keywords": [
+		"pi-package"
+	],
 	"main": "./dist/index.js",
 	"pi": {
 		"extensions": [

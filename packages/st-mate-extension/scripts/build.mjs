@@ -9,7 +9,7 @@
  * Output: .artifacts/st-extension-publish/ — exactly what the published git repo contains.
  */
 import { build } from "esbuild";
-import { cpSync, mkdirSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -46,6 +46,11 @@ await build({
 	plugins: [stHost],
 });
 
-cpSync(join(pkgRoot, "manifest.json"), join(out, "manifest.json"));
+// The manifest rides the package version (lockstep with the monorepo), not a hand-edited number.
+const pkg = JSON.parse(readFileSync(join(pkgRoot, "package.json"), "utf8"));
+const manifest = JSON.parse(readFileSync(join(pkgRoot, "manifest.json"), "utf8"));
+manifest.version = pkg.version;
+writeFileSync(join(out, "manifest.json"), `${JSON.stringify(manifest, null, "\t")}\n`);
+cpSync(join(pkgRoot, "LICENSE"), join(out, "LICENSE"));
 cpSync(join(pkgRoot, "README.md"), join(out, "README.md"));
 console.log(`assembled -> ${out}`);
