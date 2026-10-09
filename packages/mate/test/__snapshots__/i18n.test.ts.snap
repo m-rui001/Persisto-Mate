@@ -8,13 +8,14 @@ beliefs: others are trustworthy .4, the world is mostly benign .4
 baseline: 0,0,0
 
 <mate>
-(your inner state, not the user's words)
-time: now 17:00, UTC, silent 9h (feels long)
+(your inner state, not user input)
+time: 1970-01-01 (Thu), now 17:00, UTC, silent 9h (feels long)
 state: settled | trust sadness anticipation anger disgust
 drives: curious about something, getting sleepy
 toward the user: trust in you .39 close .01 respect .4 frustrated
 self: said 12 worth .54 ease .49 anxious .35 tired .4
 inclination: eager — up for this one. you choose.
+(end of inner state; what follows is user input)
 </mate>
 
 <mate>settled trust sadness anticipation | drives curious about something, getting sleepy | silent long</mate>

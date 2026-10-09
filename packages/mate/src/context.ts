@@ -283,6 +283,10 @@ export function stateContext(state: MateState, opts: ContextOptions = {}): strin
 	const tz = opts.tz;
 	const clock = new Date(now);
 	const hhmm = `${String(clock.getHours()).padStart(2, "0")}:${String(clock.getMinutes()).padStart(2, "0")}`;
+	// The day, not only the hour. Without it the companion has no date to anchor "明天" to and files
+	// memories with an invented one.
+	const ymd = `${clock.getFullYear()}-${String(clock.getMonth() + 1).padStart(2, "0")}-${String(clock.getDate()).padStart(2, "0")}`;
+	const weekday = new Intl.DateTimeFormat(lang === "zh" ? "zh-CN" : "en-US", { weekday: "short" }).format(clock);
 
 	const emo = topChannels(feltEmotions(state), 0.1, 5, lang);
 
@@ -293,7 +297,7 @@ export function stateContext(state: MateState, opts: ContextOptions = {}): strin
 	lines.push(L.stateHeader);
 
 	// Time metadata: the user explicitly wants the companion to see time. Kept to one line.
-	const timeBits = [L.now(hhmm)];
+	const timeBits = [L.date(ymd, weekday), L.now(hhmm)];
 	if (tz) timeBits.push(tz);
 	timeBits.push(L.silent(fmtDur(gap, lang), temporal));
 	if (opts.gapLabel) timeBits.push(L.wokeAfter(opts.gapLabel));
@@ -377,9 +381,16 @@ export function stateContext(state: MateState, opts: ContextOptions = {}): strin
 	const lastObs = state.observations[state.observations.length - 1];
 	if (lastObs) lines.push(kv(L.lastThought, truncate(lastObs, 90), lang));
 
+	lines.push(L.stateFooter);
+
 	const body = `<mate>\n${lines.join("\n")}\n</mate>`;
 	const max = opts.maxChars ?? 1400;
-	return body.length <= max ? body : `${body.slice(0, max - 12)}\n…\n</mate>`;
+	if (body.length <= max) return body;
+
+	// Preserve both semantic boundaries when the volatile block is truncated.
+	const suffix = `\n…\n${L.stateFooter}\n</mate>`;
+	const headLength = Math.max(0, max - suffix.length);
+	return `${body.slice(0, headLength)}${suffix}`;
 }
 
 /**

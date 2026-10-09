@@ -86,23 +86,44 @@ function switchedNote(lang: Lang): string {
 
 /**
  * First-run onboarding: the startup surface teaches the few commands that matter, in the language
- * just chosen. Deliberately short — the changelog no longer prints at boot, and this is everything a
- * new user needs to find the rest.
+ * just chosen. Deliberately short — the changelog no longer prints at boot.
+ *
+ * `modelsReady` splits the second line because the thing a new user otherwise discovers by getting
+ * no reply at all is that this companion runs on THEIR model access: nothing is hosted or free, and
+ * `/login` (subscription, API key, or a local llama.cpp / Ollama endpoint) comes before talking. The
+ * judge line is here for the same reason — one extra quiet call per ~600 reply tokens is a cost the
+ * user pays, so it is stated once at boot instead of surfacing as a surprise bill.
  */
-const TUTORIAL: Record<Lang, string> = {
-	en: [
-		"Quick start:",
-		"- Just type to talk. /model or /login picks the model; /language switches language.",
-		"- /mate shows its current state, /debug every internal number.",
-		"- Release notes live in /changelog.",
-	].join("\n"),
-	zh: [
-		"快速上手：",
-		"- 直接打字聊天；/model 或 /login 配模型，/language 切换语言。",
-		"- /mate 看它此刻的状态，/debug 看完整内部数值。",
-		"- 更新日志在 /changelog。",
-	].join("\n"),
-};
+function firstRunGuide(lang: Lang, modelsReady: boolean): string {
+	const zh = lang === "zh";
+	const lines = zh
+		? [
+				"快速上手：",
+				"- 直接打字聊天。/mate 看它此刻的状态，/debug 看完整内部数值，/language 切换语言。",
+				modelsReady
+					? "- 想换模型用 /model；它跑在你自己的模型额度上。更新日志在 /changelog。"
+					: "- 还没有可用模型：先 /login（订阅、API key，或本地 llama.cpp / Ollama），再 /model 选一个。配好之前它答不了话。",
+				"- 每说约 600 个 token，它会额外做一次安静的调用来读自己的情绪，那也走你的额度。",
+			]
+		: [
+				"Quick start:",
+				"- Just type to talk. /mate shows its current state, /debug every internal number, /language switches language.",
+				modelsReady
+					? "- /model picks a different model; it runs on your own model access. Release notes live in /changelog."
+					: "- No usable model yet: run /login first (a subscription, an API key, or local llama.cpp / Ollama), then /model. Until then it cannot answer.",
+				"- Every ~600 reply tokens it makes one extra quiet call to read its own feelings — that is your quota too.",
+			];
+	return lines.join("\n");
+}
+
+/** Whether this host has at least one model with usable auth. A failed probe never nags the user. */
+function hasUsableModel(ctx: ExtensionContext): boolean {
+	try {
+		return ctx.modelRegistry.getAvailable().length > 0;
+	} catch {
+		return true;
+	}
+}
 
 export interface MateExtensionOptions {
 	/** State directory override (defaults to getAgentDir()/mate). */
@@ -169,7 +190,7 @@ export function createMateExtension(options: MateExtensionOptions = {}): Extensi
 			// A brand-new companion gets the short tutorial instead of a changelog dump (which no longer
 			// prints at boot). Only when nothing has ever been said: not on every boot of an existing one.
 			if (rt.state.counters.messages === 0 && ctx.hasUI) {
-				ctx.ui.notify(TUTORIAL[rt.language], "info");
+				ctx.ui.notify(firstRunGuide(rt.language, hasUsableModel(ctx)), "info");
 			}
 			// Re-arm persisted alarms; the manager fires them through the callback above.
 			alarmManager.scheduleNext();

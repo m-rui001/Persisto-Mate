@@ -16,6 +16,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- **The volatile state block names the calendar day, not only the hour.** The time line was `now 17:00`, which leaves "明天" with nothing to be tomorrow relative to: asked to remember an interview the next day, the companion filed the memory with an invented date. It now leads with `YYYY-MM-DD` plus a weekday in the block's own language (`2026-10-09 (Fri)` / `2026-10-09 周五`). Both languages carry the same digits on the same line, so the language invariant test still pairs them.
+
+### Changed
+
+- **The state block closes the way it opens.** A footer line marks where the inner state ends and the user's words begin, matching the header attribution; when the block runs over its character budget the truncation keeps both boundaries instead of cutting the footer off. The header wording moved to "your inner state, not user input".
+- **Chinese surfaces address the person as `ta`.** The missing-user thought, the impulse wording, the sleep farewell, `driveMissing`, the seed-belief label (ta人可信) and the guidance lines that said 他 now use the neutral form. Two guidance bullets were shortened and the power-off wake note is one sentence.
+
 ## [1.5.0] - 2026-10-06
 
 

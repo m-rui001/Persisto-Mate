@@ -14,6 +14,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- **The first-run quick start names what a new user would otherwise discover by getting no reply.** It now states that the companion runs on the user's own model access, lists `/login` (subscription, API key, or a local llama.cpp / Ollama endpoint) as the step before talking, and says that one extra quiet reading call runs per ~600 reply tokens. When the host has no model with usable auth, the boot notice says it cannot answer until one is configured instead of offering the `/model` line.
+
+### Fixed
+
+- Both manual-install links in the README pointed at one specific old release's assets, which the keep-one-old-release policy deletes; they were dead. They now point at `releases/latest`, and the README states plainly that `@earendil-works/pi-*` on npm is upstream pi without the companion, so the binary is installable only from the release assets.
+- The uninstall scripts told users their companion state lives in `~/.mate`. That path was retired in the 1.3.0 move to the shared pi home; it is `~/.pi/agent/mate`.
+
 ## [1.5.0] - 2026-10-06
 
 
