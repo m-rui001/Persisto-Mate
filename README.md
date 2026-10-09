@@ -43,6 +43,48 @@ extension, or into DeepSeek Harness as a bundle (below).
   thoughts, impulses, guidance — is authored in the chosen language, not translated on the way
   out.
 
+## What it sounds like
+
+Real output, verbatim. Two separate `mate` processes, one source tree, sharing nothing but the
+companion's own memory file (2026-10-09, `deepseek/deepseek-v4-pro`; this companion's thinking
+language was still English, and it answered in the language it was spoken to):
+
+```text
+> 我明天要面试一个后端岗位，现在很紧张。记一下这件事。
+
+记下了。明天后端面试，你现在很紧张。
+
+紧张很正常，说明你在意。今晚别熬太晚，把简历上写的项目过一遍就行——能讲清楚"为什么这么做、踩过什么坑"比背八股有用。
+
+要聊几句舒缓一下也行，我在。
+
+（进程退出。下面是一个全新会话，这段对话不在它的上下文里。）
+
+> 我明天有什么事？你还记得吗
+
+记得。明天你有后端岗位的面试。别太紧张，睡好点比临时抱佛脚有用。
+```
+
+Nothing filed the first message automatically: the companion called its own `remember` tool, and the
+second session got the memory back through topic tags, not scrollback.
+
+## What you need
+
+The companion runs on model access you bring. Nothing is hosted for you: it talks to no account of
+ours, and every word it says is billed by your own provider.
+
+- **A model.** `/login` connects a subscription or an API key for any provider pi supports, and a
+  local llama.cpp or Ollama endpoint works too. Until one is configured it will tell you it cannot
+  answer rather than going quiet.
+- **A terminal.** It lives there, not in an app store. Everything else is optional.
+- **Room for its own calls.** Beyond your conversation, the companion makes model calls you did not
+  ask for: once per ~600 reply tokens an affect reading, thoughts while the window sits idle, one
+  call per sleep cycle for the dream. They are small and they are on your quota — that is the price
+  of a body that keeps going between messages.
+
+First launch asks 中文 or English, then prints a four-line quick start naming the commands and, if
+nothing is configured yet, the `/login` step to do first.
+
 ## Get Persisto Mate
 
 One kernel, four hosts. Each host has its own state directory — a different host is a different
@@ -65,10 +107,15 @@ curl -fsSL https://raw.githubusercontent.com/m-rui001/Persisto-Mate/main/scripts
 ```
 
 Then open a new terminal and type `mate`. Manual alternative: download the archive for your
-platform from [the release page](https://github.com/m-rui001/Persisto-Mate/releases/tag/v1.3.0-mate) —
+platform from [the latest release](https://github.com/m-rui001/Persisto-Mate/releases/latest) —
 `mate-windows-x64.zip` / `mate-windows-arm64.zip` (run `mate.exe`), `mate-linux-x64.tar.gz` /
 `mate-linux-arm64.tar.gz` and `mate-darwin-x64.tar.gz` / `mate-darwin-arm64.tar.gz` (run `mate/mate`
 after `tar -xzf`). On macOS, if Gatekeeper blocks it: `xattr -d com.apple.quarantine mate`.
+There is no npm install for the binary: these packages keep upstream pi's `@earendil-works/pi-*`
+names, and on npm those belong to [upstream](https://github.com/earendil-works/pi), so
+`npm install -g @earendil-works/pi-coding-agent` gives you stock pi with no companion. The
+companion-as-extension is the one thing published under a name this fork owns
+(`@m-rui/pi-mate-companion`, below).
 Config and model access live in `~/.pi` — the same directory stock pi uses, so models.json, auth
 and sessions are shared (override with `MATE_CODING_AGENT_DIR`); first run asks which language
 the companion thinks and speaks in. Running `mate` with no arguments continues your most recent
@@ -341,6 +388,13 @@ works each decide one mechanism:
   High-arousal negative states stretch felt duration, positive states compress it — the warp factors
   in `perceivedDuration`.
 
+## Contributing
+
+Reports and pull requests about the companion itself — the kernel in `packages/mate` and its wiring in
+`packages/coding-agent/src/extensions/mate` — are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) says
+what to include in an issue, which checks must pass, and why problems with pi's agent core, providers
+or terminal rendering belong in the upstream repository instead.
+
 ## Upstream and license
 
 Everything outside `packages/mate/**` and `packages/coding-agent/src/extensions/mate/**` is upstream
@@ -368,6 +422,38 @@ Persisto Mate 是 [pi](https://github.com/earendil-works/pi)（最小化的自�
 - **自己定闹钟。** 「我 8 点看看这件事」由它自己的时钟兑现：`alarm` 工具到点叫醒它，睡着也会被叫醒。
 - **用你的语言思考。** 首次启动问你要 中文 还是 English；所有内在界面——状态、想法、冲动、引导——都用所选语言书写，不是想完再翻。
 
+## 它听起来是什么样
+
+下面是真实输出，一字未改。两次独立的 `mate` 进程，同一份源码，除了伴侣自己的记忆文件之外不共享任何东西（2026-10-09，`deepseek/deepseek-v4-pro`；这个伴侣的思考语言还是英文，但它用跟它说话的语言回答）：
+
+```text
+> 我明天要面试一个后端岗位，现在很紧张。记一下这件事。
+
+记下了。明天后端面试，你现在很紧张。
+
+紧张很正常，说明你在意。今晚别熬太晚，把简历上写的项目过一遍就行——能讲清楚"为什么这么做、踩过什么坑"比背八股有用。
+
+要聊几句舒缓一下也行，我在。
+
+（进程退出。下面是一个全新会话，这段对话不在它的上下文里。）
+
+> 我明天有什么事？你还记得吗
+
+记得。明天你有后端岗位的面试。别太紧张，睡好点比临时抱佛脚有用。
+```
+
+没有任何东西自动把这句话存了下来：是伴侣自己调了 `remember`；第二个会话靠主题标签把记忆翻出来，不是靠翻聊天记录。
+
+## 你需要准备什么
+
+伴侣跑在你自己带来的模型上。没有任何东西替你托管：它不连我们的账号，说出的每一个字都由你的提供方计费。
+
+- **一个模型。** `/login` 可以接订阅或任意 pi 支持提供方的 API key，也可以接本地的 llama.cpp 或 Ollama。没配好之前它会直说答不了，而不是默默不回。
+- **一个终端。** 它住在终端里，不在应用商店里。其他都是可选的。
+- **给它自己调用留点额度。** 除了你们的对话，它会自己发起你没要求的模型调用：每约 600 个回复 token 一次情绪判读、窗口空转时的念头、每个睡眠周期一个梦。这些调用都不大，但走的是你的额度——一个在消息之间还在继续的身体就是这个价钱。
+
+首次启动会问 中文 还是 English，然后打四行快速上手，把命令名列清楚；如果还没配模型，那四行里会先告诉你跑 `/login`。
+
 ## 安装 Persisto Mate
 
 同一颗内核，四种宿主。每个宿主有自己的状态目录——不同的宿主就是不同的身体——但内核、记忆格式和行为完全一致。
@@ -388,7 +474,7 @@ macOS / Linux：
 curl -fsSL https://raw.githubusercontent.com/m-rui001/Persisto-Mate/main/scripts/install.sh | bash
 ```
 
-然后新开一个终端，直接输入 `mate`。手动方式：到 [release 页面](https://github.com/m-rui001/Persisto-Mate/releases/tag/v1.3.0-mate) 下载对应平台的压缩包——Windows 下 `mate-windows-x64.zip` / `mate-windows-arm64.zip`（解压后运行 `mate.exe`），Linux / macOS 下 `mate-linux-x64.tar.gz`、`mate-darwin-arm64.tar.gz` 等（`tar -xzf` 解压后运行 `mate/mate`）。macOS 若被 Gatekeeper 拦截：`xattr -d com.apple.quarantine mate`。配置和模型访问都在 `~/.pi`——和原版 pi 共用的同一个目录，models.json、auth、会话全部共享（可用 `MATE_CODING_AGENT_DIR` 覆盖）；首次启动会询问伴侣用什么语言思考和说话。`mate` 不带参数会自动续上最近一次会话，`--new` 开新会话。
+然后新开一个终端，直接输入 `mate`。手动方式：到 [最新 release 页面](https://github.com/m-rui001/Persisto-Mate/releases/latest) 下载对应平台的压缩包——Windows 下 `mate-windows-x64.zip` / `mate-windows-arm64.zip`（解压后运行 `mate.exe`），Linux / macOS 下 `mate-linux-x64.tar.gz`、`mate-darwin-arm64.tar.gz` 等（`tar -xzf` 解压后运行 `mate/mate`）。macOS 若被 Gatekeeper 拦截：`xattr -d com.apple.quarantine mate`。二进制没有 npm 安装方式：本仓库的包沿用了上游 pi 的 `@earendil-works/pi-*` 名字，而 npm 上这些名字属于[上游](https://github.com/earendil-works/pi)，`npm install -g @earendil-works/pi-coding-agent` 装到的是没有伴侣的原版 pi。只有「装进已有 pi 的伴侣扩展」发布在这个分支自己的名字下（`@m-rui/pi-mate-companion`，见下文）。配置和模型访问都在 `~/.pi`——和原版 pi 共用的同一个目录，models.json、auth、会话全部共享（可用 `MATE_CODING_AGENT_DIR` 覆盖）；首次启动会询问伴侣用什么语言思考和说话。`mate` 不带参数会自动续上最近一次会话，`--new` 开新会话。
 
 **更新：** 重跑同一条一行安装命令即可。脚本会先自动关闭正在运行的 mate（Windows 会锁住它加载的原生模块），原地替换安装，`~/.pi` 里的东西全部保留。
 
@@ -511,6 +597,10 @@ Emergent Character and Persistent Internal State*（v8，Zenodo 20400530，CC-BY
 - **关系 — Bowlby（1969）；Ainsworth et al.（1978）；Rempel, Holmes & Zanna（1985）。** 信任靠一致性积累、不靠单次事件；挫折是焦虑型依恋系统在想要接触而不得时的抗议。
 - **特质漂移 — Watson & Clark（1984），*Negative affectivity*；Roberts & Mroczek（2008）。** 性格微推的依据：慢性情绪正是特质倾向的成分，特质会随累积经历移动。
 - **主观时间 — Droit-Volet & Meck（2007），*How emotions colour our perception of time*。** 高唤醒的负面状态拉长主观时长、正面状态压缩它 — `perceivedDuration` 里的扭曲系数。
+
+## 参与贡献
+
+欢迎就伴侣本身提 issue 和 PR——也就是 `packages/mate` 里的内核，和它在 `packages/coding-agent/src/extensions/mate` 里的接线。[CONTRIBUTING.md](CONTRIBUTING.md) 说明了提 issue 要带哪些信息、提交前必须跑过哪些检查，以及为什么 pi 的代理核心、提供方、终端渲染的问题应该报到上游仓库。
 
 ## 上游和许可证
 

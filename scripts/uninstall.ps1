@@ -1,8 +1,8 @@
 # Uninstall MATE: close running companions, remove the install directory and the PATH entry.
 # Usage (PowerShell):
 #   iwr https://raw.githubusercontent.com/m-rui001/Persisto-Mate/main/scripts/uninstall.ps1 -useb | iex
-# The companion's state and memories in ~/.mate are KEPT - delete that directory
-# yourself if you want them gone too.
+# The companion's state and memories in ~/.pi/agent/mate are KEPT - delete that
+# directory yourself if you want them gone too.
 $ErrorActionPreference = "Stop"
 
 $InstallDir = if ($env:MATE_INSTALL_DIR) { $env:MATE_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "Programs\mate" }
@@ -36,4 +36,4 @@ if ($UserPath) {
     Write-Host "Removed $DirNormalized from your user PATH (takes effect in new terminals)."
 }
 
-Write-Host "mate uninstalled. Companion state in ~\.mate was kept; remove that directory too if you want everything gone."
+Write-Host "mate uninstalled. Companion state in ~\.pi\agent\mate was kept; remove that directory too if you want everything gone."
