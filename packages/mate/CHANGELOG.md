@@ -14,7 +14,7 @@
 - Offline catch-up applied the sleep-window phase reset at the window's START, so the window's hours were then integrated as wake time: a 24h gap woke the body with rest ≈ 0.5 after "sleeping". The reset now lands at the window's END, so the night's build-up is wiped and waking leaves rest near zero plus the hours since the window ended.
 - `context.q()` rendered 0 as `.0` and 1 as `1.0`; zeros and integers now render bare (`0`, `1`, `.4` style unchanged).
 
-## [Unreleased]
+## [1.5.3] - 2026-10-09
 
 ### Added
 
@@ -24,6 +24,8 @@
 
 - **The state block closes the way it opens.** A footer line marks where the inner state ends and the user's words begin, matching the header attribution; when the block runs over its character budget the truncation keeps both boundaries instead of cutting the footer off. The header wording moved to "your inner state, not user input".
 - **Chinese surfaces address the person as `ta`.** The missing-user thought, the impulse wording, the sleep farewell, `driveMissing`, the seed-belief label (ta人可信) and the guidance lines that said 他 now use the neutral form. Two guidance bullets were shortened and the power-off wake note is one sentence.
+
+## [Unreleased]
 
 ## [1.5.0] - 2026-10-06
 

@@ -12,7 +12,7 @@
 
 - Marketplace listings for the two published extension hosts. The pi plugin package now declares the `pi-package` npm keyword, making `@m-rui/pi-mate-companion` eligible for discovery in the pi.dev package gallery (the gallery's stated discovery mechanism). The SillyTavern extension's published repo now stamps its `manifest.json` version from the package version (was hardcoded) and ships a MIT LICENSE, meeting the SillyTavern-Content index requirement for a libre license.
 
-## [Unreleased]
+## [1.5.3] - 2026-10-09
 
 ### Added
 
@@ -22,6 +22,8 @@
 
 - Both manual-install links in the README pointed at one specific old release's assets, which the keep-one-old-release policy deletes; they were dead. They now point at `releases/latest`, and the README states plainly that `@earendil-works/pi-*` on npm is upstream pi without the companion, so the binary is installable only from the release assets.
 - The uninstall scripts told users their companion state lives in `~/.mate`. That path was retired in the 1.3.0 move to the shared pi home; it is `~/.pi/agent/mate`.
+
+## [Unreleased]
 
 ## [1.5.0] - 2026-10-06
 
